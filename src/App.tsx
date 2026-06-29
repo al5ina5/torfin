@@ -1488,7 +1488,7 @@ export default function App() {
         />
 
         <section className="flex min-h-0 min-w-0 flex-col">
-          <header className="mac-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4">
+          <header className="mac-toolbar app-mobile-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4">
             {!isDesktop ? (
               <button
                 type="button"

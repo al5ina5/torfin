@@ -1675,6 +1675,15 @@ async function prewarmJsonCache() {
   }
 }
 
+server.on('error', (error) => {
+  if (error?.code === 'EADDRINUSE') {
+    console.error(`Port ${port} is already in use. Stop the other process or set PORT to a free port.`)
+    process.exit(1)
+  }
+  console.error('Server failed to start:', error.message || String(error))
+  process.exit(1)
+})
+
 server.listen(port, '0.0.0.0', () => {
   void resumeIncompleteDownloads()
   void prewarmJsonCache()

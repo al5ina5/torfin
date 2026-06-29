@@ -61,8 +61,17 @@ async function runWithPlaywright(url) {
     await page.locator('.preferences-modal-panel').waitFor({ state: 'visible', timeout: 10000 })
     await page.getByRole('button', { name: 'Close' }).first().click()
 
-    // Catalog toolbar: title + search + filters only
-    await page.getByRole('heading', { name: /Trending|Top Rated|Featured|New Releases|Action/i }).first().waitFor()
+    // Series tab
+    await page.getByRole('button', { name: 'Series' }).click()
+    await page.getByRole('heading', { name: /Trending|Top Rated/i }).first().waitFor({ timeout: 15000 })
+
+    // Filters modal
+    await page.getByTitle('Filters').click()
+    await page.getByText('Filters', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 })
+    await page.getByRole('button', { name: 'Close' }).first().click()
+
+    // Back to movies for catalog flow
+    await page.getByRole('button', { name: 'Movies' }).click()
     await page.getByPlaceholder('Search').waitFor({ state: 'visible' })
     await page.getByTitle('Filters').waitFor({ state: 'visible' })
 

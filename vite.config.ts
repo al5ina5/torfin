@@ -36,7 +36,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'splash/*.png'],
       manifest: {
         name: 'Torfin',
         short_name: 'Torfin',

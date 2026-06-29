@@ -31,6 +31,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Integration tests
+        run: npm run test:transcode && npm run test:web-downloads && npm run test:server-api
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
