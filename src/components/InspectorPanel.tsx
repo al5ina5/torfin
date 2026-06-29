@@ -119,7 +119,7 @@ function InspectorContent({
 
   return (
     <section>
-      <div className="relative h-44 overflow-hidden border-b border-[var(--mac-border)] bg-[var(--mac-control)] sm:h-52">
+      <div className="relative h-44 overflow-hidden border-b border-[var(--mac-divider,var(--mac-border))] bg-[var(--mac-control)] sm:h-52">
         {movie.background || movie.poster ? (
           <img
             src={movie.background || movie.poster}
@@ -376,7 +376,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="app-sidebar-desktop mac-sidebar hidden min-h-0 flex-col border-l lg:flex">
+      <aside className="app-sidebar-desktop mac-sidebar hidden min-h-0 flex-col lg:flex">
         {!movie ? (
           <div className="grid h-full min-h-96 place-items-center p-6 text-center text-[13px] text-[var(--mac-secondary)]">
             Pick a title to inspect streams.

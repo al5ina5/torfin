@@ -1,7 +1,7 @@
 import { HardDriveDownload, Loader2, Pause, Play } from 'lucide-react'
 
 import { liveMetricsForJob, useLiveDownloadMetrics } from '../hooks/useLiveDownloadMetrics'
-import { bytesLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
+import { bytesLabel, downloadStatusLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
 import type { DownloadJob, DownloadSort } from '../types'
 import { AppModal } from './AppModal'
 
@@ -117,7 +117,8 @@ export function DownloadsModal({
               const isPaused = Boolean(job.paused && isActiveDownloadJob(job))
               const isStalled = status?.state === 'stalled'
               const title = status?.name ?? job.stream.title
-              const stateLabel = job.paused ? 'paused' : status?.state || (job.error ? 'error' : 'queued')
+              const stateLabel = downloadStatusLabel(job)
+              const jellyfinReady = stateLabel === 'available in jellyfin'
               return (
                 <div key={status?.id || job.pendingId || `${job.movie.id}-${job.stream.title}`} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-2.5">
                   <div className="flex items-start gap-2">
@@ -173,20 +174,22 @@ export function DownloadsModal({
                                   : isStalled
                                     ? 'bg-amber-500'
                                     : status.complete
-                                      ? 'bg-emerald-500'
+                                      ? jellyfinReady
+                                        ? 'bg-violet-500'
+                                        : 'bg-emerald-500'
                                       : 'bg-[var(--mac-accent)]'
                               }`}
                               style={{ width: `${Math.max(progressValue * 100, isActive ? 1 : 0)}%` }}
                             />
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-[var(--mac-secondary)]">
+                            <span className={`font-medium ${jellyfinReady ? 'text-violet-600 dark:text-violet-300' : 'text-[var(--mac-text)]'}`}>
+                              {stateLabel}
+                            </span>
                             {status.complete ? (
-                              <span>
-                                {status.size > 0 ? bytesLabel(status.size) : bytesLabel(status.downloaded)}
-                              </span>
+                              <span>{status.size > 0 ? bytesLabel(status.size) : bytesLabel(status.downloaded)}</span>
                             ) : (
                               <>
-                                <span className="font-medium text-[var(--mac-text)]">{stateLabel}</span>
                                 <span>{bytesLabel(displaySpeed)}/s</span>
                                 <span>{etaLabel(displayEta)}</span>
                                 <span>

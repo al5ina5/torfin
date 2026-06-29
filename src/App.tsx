@@ -1061,7 +1061,7 @@ export default function App() {
         />
 
         <section className="flex min-h-0 min-w-0 flex-col">
-          <header className="mac-toolbar flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:gap-3 sm:px-4">
+          <header className="mac-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4">
             {!isDesktop ? (
               <button
                 type="button"
@@ -1087,7 +1087,7 @@ export default function App() {
                 onFocus={() => setSearchHistoryOpen(true)}
                 onBlur={() => window.setTimeout(() => setSearchHistoryOpen(false), 120)}
                 placeholder="Search"
-                className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] pl-8 pr-2 text-[13px] outline-none transition placeholder:text-[var(--mac-tertiary)] focus:border-[var(--mac-accent)]"
+                className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] pl-8 pr-2 text-[13px] outline-none transition placeholder:text-[var(--mac-tertiary)] focus:border-[color-mix(in_srgb,var(--mac-accent)_40%,var(--mac-border))] focus:ring-2 focus:ring-[var(--mac-accent-soft)]"
               />
               {searchHistoryOpen && searchHistory.length && !query.trim() ? (
                 <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-elevated)] py-1 shadow-lg">
@@ -1134,7 +1134,7 @@ export default function App() {
               onClick={openFilters}
               className={`grid size-8 place-items-center rounded-md border border-[var(--mac-border)] transition hover:bg-[var(--mac-control-hover)] ${
                 Object.values(movieFilters).some((value) => value && value !== 'catalog')
-                  ? 'bg-[var(--mac-accent)] text-[var(--mac-accent-text)]'
+                  ? 'bg-[var(--mac-accent-soft)] text-[var(--mac-accent-soft-text)]'
                   : 'bg-[var(--mac-control)]'
               }`}
               title="Filters"

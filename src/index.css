@@ -16,45 +16,56 @@ html[data-theme="light"] {
   --mac-control: rgba(118, 118, 128, 0.14);
   --mac-control-hover: rgba(118, 118, 128, 0.2);
   --mac-accent: #007aff;
+  --mac-accent-soft: rgba(0, 122, 255, 0.12);
+  --mac-accent-soft-text: #007aff;
   --mac-accent-text: #ffffff;
+  --mac-divider: rgba(60, 60, 67, 0.1);
   --mac-shadow: 0 18px 50px rgba(0, 0, 0, 0.12);
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --mac-window: #1d1d20;
-  --mac-sidebar: rgba(38, 38, 42, 0.78);
-  --mac-toolbar: rgba(42, 42, 46, 0.72);
-  --mac-surface: rgba(44, 44, 48, 0.78);
-  --mac-elevated: rgba(52, 52, 56, 0.92);
-  --mac-border: rgba(255, 255, 255, 0.12);
-  --mac-border-strong: rgba(255, 255, 255, 0.2);
-  --mac-text: #f5f5f7;
-  --mac-secondary: rgba(235, 235, 245, 0.68);
-  --mac-tertiary: rgba(235, 235, 245, 0.42);
-  --mac-control: rgba(118, 118, 128, 0.24);
-  --mac-control-hover: rgba(118, 118, 128, 0.34);
-  --mac-accent: #0a84ff;
-  --mac-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  --mac-window: #131315;
+  --mac-sidebar: #131315;
+  --mac-toolbar: #161618;
+  --mac-surface: #19191b;
+  --mac-elevated: #1d1d1f;
+  --mac-border: rgba(255, 255, 255, 0.07);
+  --mac-border-strong: rgba(255, 255, 255, 0.11);
+  --mac-divider: rgba(255, 255, 255, 0.04);
+  --mac-text: #ececef;
+  --mac-secondary: rgba(235, 235, 245, 0.54);
+  --mac-tertiary: rgba(235, 235, 245, 0.3);
+  --mac-control: rgba(255, 255, 255, 0.055);
+  --mac-control-hover: rgba(255, 255, 255, 0.09);
+  --mac-accent: #3d9eff;
+  --mac-accent-soft: rgba(61, 158, 255, 0.14);
+  --mac-accent-soft-text: #6db5ff;
+  --mac-accent-text: #ffffff;
+  --mac-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
 }
 
 @media (prefers-color-scheme: dark) {
   html[data-theme="system"] {
     color-scheme: dark;
-    --mac-window: #1d1d20;
-    --mac-sidebar: rgba(38, 38, 42, 0.78);
-    --mac-toolbar: rgba(42, 42, 46, 0.72);
-    --mac-surface: rgba(44, 44, 48, 0.78);
-    --mac-elevated: rgba(52, 52, 56, 0.92);
-    --mac-border: rgba(255, 255, 255, 0.12);
-    --mac-border-strong: rgba(255, 255, 255, 0.2);
-    --mac-text: #f5f5f7;
-    --mac-secondary: rgba(235, 235, 245, 0.68);
-    --mac-tertiary: rgba(235, 235, 245, 0.42);
-    --mac-control: rgba(118, 118, 128, 0.24);
-    --mac-control-hover: rgba(118, 118, 128, 0.34);
-    --mac-accent: #0a84ff;
-    --mac-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+    --mac-window: #131315;
+    --mac-sidebar: #131315;
+    --mac-toolbar: #161618;
+    --mac-surface: #19191b;
+    --mac-elevated: #1d1d1f;
+    --mac-border: rgba(255, 255, 255, 0.07);
+    --mac-border-strong: rgba(255, 255, 255, 0.11);
+    --mac-divider: rgba(255, 255, 255, 0.04);
+    --mac-text: #ececef;
+    --mac-secondary: rgba(235, 235, 245, 0.54);
+    --mac-tertiary: rgba(235, 235, 245, 0.3);
+    --mac-control: rgba(255, 255, 255, 0.055);
+    --mac-control-hover: rgba(255, 255, 255, 0.09);
+    --mac-accent: #3d9eff;
+    --mac-accent-soft: rgba(61, 158, 255, 0.14);
+    --mac-accent-soft-text: #6db5ff;
+    --mac-accent-text: #ffffff;
+    --mac-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
   }
 }
 
@@ -123,14 +134,14 @@ body.modal-open {
 
 .mac-toolbar {
   background: var(--mac-toolbar);
-  border-color: var(--mac-border);
+  border-color: var(--mac-divider, var(--mac-border));
   -webkit-backdrop-filter: saturate(180%) blur(28px);
   backdrop-filter: saturate(180%) blur(28px);
 }
 
 .mac-sidebar {
   background: var(--mac-sidebar);
-  border-color: var(--mac-border);
+  border-color: var(--mac-divider, var(--mac-border));
   -webkit-backdrop-filter: saturate(180%) blur(34px);
   backdrop-filter: saturate(180%) blur(34px);
 }
@@ -141,6 +152,24 @@ body.modal-open {
   box-shadow: var(--mac-shadow);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
+}
+
+html[data-theme="dark"] .mac-vibrant,
+html[data-theme="dark"] .mac-toolbar,
+html[data-theme="dark"] .mac-sidebar,
+html[data-theme="dark"] .mac-elevated {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .mac-vibrant,
+  html[data-theme="system"] .mac-toolbar,
+  html[data-theme="system"] .mac-sidebar,
+  html[data-theme="system"] .mac-elevated {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 .app-shell {
@@ -156,9 +185,9 @@ body.modal-open {
   min-width: 6px;
   cursor: col-resize;
   border: 0;
-  border-left: 1px solid var(--mac-border);
+  border-left: 1px solid var(--mac-divider, var(--mac-border));
   border-right: 1px solid transparent;
-  background: color-mix(in srgb, var(--mac-sidebar) 70%, transparent);
+  background: transparent;
   padding: 0;
   transition:
     background 120ms ease,
@@ -176,15 +205,15 @@ body.modal-open {
 .app-splitter:hover,
 .app-splitter:focus-visible,
 .is-resizing-layout .app-splitter {
-  border-left-color: color-mix(in srgb, var(--mac-accent) 50%, var(--mac-border));
-  background: color-mix(in srgb, var(--mac-accent) 12%, var(--mac-sidebar));
+  border-left-color: color-mix(in srgb, var(--mac-accent) 28%, var(--mac-divider, var(--mac-border)));
+  background: color-mix(in srgb, var(--mac-accent) 6%, transparent);
   outline: none;
 }
 
 .app-splitter:hover::after,
 .app-splitter:focus-visible::after,
 .is-resizing-layout .app-splitter::after {
-  background: color-mix(in srgb, var(--mac-accent) 58%, transparent);
+  background: color-mix(in srgb, var(--mac-accent) 35%, transparent);
 }
 
 .is-resizing-layout,
@@ -214,7 +243,7 @@ body.modal-open {
   position: fixed;
   inset: 0;
   z-index: 39;
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.22);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   opacity: 0;
@@ -235,7 +264,7 @@ body.modal-open {
   max-width: 85vw;
   transform: translateX(-105%);
   transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.12);
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: env(safe-area-inset-bottom, 0);
   will-change: transform;
@@ -251,7 +280,7 @@ body.modal-open {
   position: fixed;
   inset: 0;
   z-index: 44;
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.2);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   opacity: 0;
@@ -289,7 +318,7 @@ body.modal-open {
   gap: 8px;
   height: 48px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--mac-border);
+  border-bottom: 1px solid var(--mac-divider, var(--mac-border));
   background: var(--mac-toolbar);
   -webkit-backdrop-filter: saturate(180%) blur(28px);
   backdrop-filter: saturate(180%) blur(28px);

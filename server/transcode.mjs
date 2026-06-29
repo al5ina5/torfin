@@ -159,7 +159,7 @@ async function waitForPlaylist(playlistPath, segmentPath, child, stderrChunks, t
 export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subtitleStreamIndex = null) {
   const ffmpeg = findFfmpeg()
   if (!ffmpeg) {
-    throw new Error('Install ffmpeg to play this video type. Homebrew: brew install ffmpeg')
+    throw new Error('FFmpeg is not available. Rebuild the Docker image or install ffmpeg on this host.')
   }
 
   stopActiveSession()

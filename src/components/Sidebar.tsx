@@ -63,8 +63,8 @@ export function Sidebar({
   }
 
   const asideClass = mobile
-    ? `app-sidebar-drawer mac-sidebar flex min-h-0 flex-col border-r ${open ? 'is-open' : ''}`
-    : 'app-sidebar-desktop mac-sidebar flex min-h-0 flex-col border-r'
+    ? `app-sidebar-drawer mac-sidebar flex min-h-0 flex-col ${open ? 'is-open' : ''}`
+    : 'app-sidebar-desktop mac-sidebar flex min-h-0 flex-col'
 
   return (
     <aside
@@ -99,7 +99,7 @@ export function Sidebar({
             onClick={() => handleNavigate(() => onContentTypeChange('movie'))}
             className={`flex h-7 items-center justify-center gap-1 rounded-md text-[11px] font-semibold transition ${
               contentType === 'movie'
-                ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
+                ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)]'
                 : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control-hover)]'
             }`}
           >
@@ -111,7 +111,7 @@ export function Sidebar({
             onClick={() => handleNavigate(() => onContentTypeChange('series'))}
             className={`flex h-7 items-center justify-center gap-1 rounded-md text-[11px] font-semibold transition ${
               contentType === 'series'
-                ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
+                ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)]'
                 : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control-hover)]'
             }`}
           >
@@ -155,7 +155,7 @@ export function Sidebar({
                       })}
                       className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
                         catalogId === option.id
-                          ? 'bg-[var(--mac-accent)] text-[var(--mac-accent-text)]'
+                          ? 'bg-[var(--mac-accent-soft)] text-[var(--mac-accent-soft-text)]'
                           : 'text-[var(--mac-text)] hover:bg-[var(--mac-control)]'
                       }`}
                     >
@@ -172,7 +172,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="border-t border-[var(--mac-border)] p-2">
+      <div className="border-t border-[var(--mac-divider,var(--mac-border))] p-2">
         <button
           type="button"
           onClick={() => handleNavigate(onOpenPreferences)}

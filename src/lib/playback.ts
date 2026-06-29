@@ -63,5 +63,5 @@ export function playbackUnavailableMessage() {
   if (isTauriRuntime()) {
     return 'This stream is not playable. Install FFmpeg (brew install ffmpeg) or try another result.'
   }
-  return 'This stream is not playable in the browser. Run npm run dev:full with FFmpeg installed, use the desktop app (npm run tauri:dev), or try another result.'
+  return 'This stream is not playable in the browser. Ensure FFmpeg is installed on the server (included in the Docker image), or try another result.'
 }

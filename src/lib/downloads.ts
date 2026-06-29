@@ -38,6 +38,29 @@ export function isFinishedDownloadJob(job: DownloadJob) {
   return Boolean(job.status?.complete || job.status?.state.startsWith('error:') || job.error)
 }
 
+export function isJellyfinImportConfirmed(status?: DownloadStatus) {
+  return Boolean(status?.jellyfinImportedAt && status?.jellyfinItemId)
+}
+
+export function jellyfinSyncConfigured(job: DownloadJob) {
+  const jellyfin = job.pollConfig?.jellyfin
+  return Boolean(jellyfin?.refreshOnComplete && jellyfin.baseUrl.trim() && jellyfin.apiKey.trim())
+}
+
+export function downloadStatusLabel(job: DownloadJob) {
+  const status = job.status
+  if (!status) return job.error ? 'failed' : 'queued'
+  if (job.paused && isActiveDownloadJob(job)) return 'paused'
+  if (status.state.startsWith('error:')) return 'failed'
+  if (status.state === 'stalled') return 'stalled'
+  if (!status.complete) {
+    if (status.state === 'queued' || status.state === 'waiting') return 'queued'
+    return 'downloading'
+  }
+  if (isJellyfinImportConfirmed(status)) return 'available in jellyfin'
+  return 'downloaded'
+}
+
 export function sortDownloadJobs(jobs: DownloadJob[], sort: DownloadSort) {
   return [...jobs].sort((left, right) => {
     if (sort === 'active') {

@@ -245,6 +245,118 @@ pub(crate) async fn authenticate_jellyfin(
         .ok_or_else(|| "Jellyfin did not return an access token.".to_string())
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct JellyfinImportMatch {
+    #[serde(rename = "itemId")]
+    item_id: String,
+    path: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn verify_jellyfin_import(
+    base_url: String,
+    api_key: String,
+    target_path: String,
+    path_map_from: Option<String>,
+    path_map_to: Option<String>,
+) -> Result<Option<JellyfinImportMatch>, String> {
+    let base_url = normalized_base_url(&base_url)?;
+    let target_path = target_path.trim();
+    if target_path.is_empty() {
+        return Ok(None);
+    }
+
+    let mapped_path = map_jellyfin_path(
+        target_path,
+        path_map_from.as_deref(),
+        path_map_to.as_deref(),
+    );
+    let client = reqwest::Client::new();
+    let body = client
+        .get(format!(
+            "{base_url}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Path&Limit=10000"
+        ))
+        .header("X-Emby-Token", api_key.trim())
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let items = body
+        .get("Items")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let basename = std::path::Path::new(target_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+
+    for item in &items {
+        let Some(path) = item.get("Path").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if path == mapped_path || path == target_path {
+            return Ok(Some(import_match_from_item(item)));
+        }
+    }
+
+    if !basename.is_empty() {
+        for item in &items {
+            let Some(path) = item.get("Path").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            if path.ends_with(&format!("/{basename}")) || path.ends_with(basename) {
+                return Ok(Some(import_match_from_item(item)));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn import_match_from_item(item: &serde_json::Value) -> JellyfinImportMatch {
+    JellyfinImportMatch {
+        item_id: item
+            .get("Id")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        path: item
+            .get("Path")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string),
+    }
+}
+
+fn map_jellyfin_path(target: &str, from: Option<&str>, to: Option<&str>) -> String {
+    let target = normalize_path(target);
+    let Some(from) = from.filter(|value| !value.trim().is_empty()) else {
+        return target;
+    };
+    let Some(to) = to.filter(|value| !value.trim().is_empty()) else {
+        return target;
+    };
+    let from = normalize_path(from);
+    let to = normalize_path(to);
+    if target == from {
+        return to;
+    }
+    if target.starts_with(&format!("{from}/")) {
+        return format!("{}{}", to, &target[from.len()..]);
+    }
+    target
+}
+
+fn normalize_path(value: &str) -> String {
+    value.trim().replace('\\', "/").trim_end_matches('/').to_string()
+}
+
 #[tauri::command]
 pub(crate) async fn refresh_jellyfin_library(
     base_url: String,

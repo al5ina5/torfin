@@ -28,6 +28,7 @@ pub fn run() {
             jellyfin::test_jellyfin,
             jellyfin::authenticate_jellyfin,
             jellyfin::refresh_jellyfin_library,
+            jellyfin::verify_jellyfin_import,
             secrets::get_secret,
             secrets::set_secret,
             secrets::delete_secret

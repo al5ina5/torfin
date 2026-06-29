@@ -1278,9 +1278,38 @@ async function findJellyfinItemForJob(job, { baseUrl, apiKey }) {
   const base = String(baseUrl || '').replace(/\/+$/, '')
   const headers = { 'X-Emby-Token': String(apiKey || '').trim() }
   const jellyfinPath = jellyfinPathForJob(job)
-  const body = await fetchJson(`${base}/Items?Recursive=true&IncludeItemTypes=Movie&Fields=Path&Limit=10000`, { headers })
+  const targetPath = normalize(job.targetPath || '')
+  const basenameName = basename(job.targetPath || '')
+  const body = await fetchJson(`${base}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Path&Limit=10000`, { headers })
   const items = Array.isArray(body?.Items) ? body.Items : []
-  return items.find((item) => item.Path === jellyfinPath) || null
+  const exact = items.find((item) => item.Path === jellyfinPath || (targetPath && item.Path === targetPath))
+  if (exact) return exact
+  if (basenameName) {
+    return items.find((item) => item.Path?.endsWith(`/${basenameName}`) || item.Path?.endsWith(basenameName)) || null
+  }
+  return null
+}
+
+async function verifyJellyfinImport({ baseUrl, apiKey, targetPath, pathMapFrom, pathMapTo }) {
+  const base = String(baseUrl || '').replace(/\/+$/, '')
+  const headers = { 'X-Emby-Token': String(apiKey || '').trim() }
+  const target = normalize(String(targetPath || ''))
+  if (!target) return null
+  const from = normalize(String(pathMapFrom || jellyfinPathMapFrom))
+  const to = normalize(String(pathMapTo || jellyfinPathMapTo))
+  let mapped = target
+  if (target === from) mapped = to
+  else if (target.startsWith(`${from}/`)) mapped = `${to}${target.slice(from.length)}`
+  const body = await fetchJson(`${base}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Path&Limit=10000`, { headers })
+  const items = Array.isArray(body?.Items) ? body.Items : []
+  const basenameName = basename(target)
+  const exact = items.find((item) => item.Path === mapped || item.Path === target)
+  if (exact) return { itemId: exact.Id || '', path: exact.Path || '' }
+  if (basenameName) {
+    const fuzzy = items.find((item) => item.Path?.endsWith(`/${basenameName}`) || item.Path?.endsWith(basenameName))
+    if (fuzzy) return { itemId: fuzzy.Id || '', path: fuzzy.Path || '' }
+  }
+  return null
 }
 
 async function waitForJellyfinImport(job, config) {
@@ -1430,6 +1459,10 @@ async function handleApi(request, response, pathname) {
   if (pathname === '/api/jellyfin/refresh') {
     await refreshJellyfin(body)
     sendJson(response, 200, { ok: true })
+    return
+  }
+  if (pathname === '/api/jellyfin/verify-import') {
+    sendJson(response, 200, await verifyJellyfinImport(body))
     return
   }
   if (pathname === '/api/jellyfin/test') {

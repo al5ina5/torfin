@@ -24,7 +24,7 @@ export function useDownloadNotifications({ enabled, jobs }: UseDownloadNotificat
 
       if (job.status?.complete) {
         notifiedRef.current.add(id)
-        showAppNotification('Download complete', `${job.movie.name} finished downloading.`)
+        showAppNotification('Downloaded', `${job.movie.name} finished downloading.`)
         return
       }
 
