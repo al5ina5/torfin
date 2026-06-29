@@ -927,7 +927,7 @@ fn start_local_url_download_inner(
     let id_for_thread = id.clone();
     std::thread::spawn(move || {
         let status = child.wait();
-        let mut downloads = LOCAL_DOWNLOADS
+        let downloads = LOCAL_DOWNLOADS
             .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
             .lock()
             .ok();

@@ -81,7 +81,7 @@ pub(crate) async fn lookup_jellyfin_library(
                     })
                 });
 
-            return Ok(matched.map(|item| item_to_match(item)));
+            return Ok(matched.map(item_to_match));
         }
 
         let series_url = format!(
