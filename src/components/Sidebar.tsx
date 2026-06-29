@@ -1,8 +1,14 @@
-import { Clapperboard, Clock, Download, Film, Heart, History, Settings2, Tv, X } from 'lucide-react'
+import { Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv, X } from 'lucide-react'
 
 import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
 import { catalogOptions, isLibraryCatalog, libraryCatalogOptions } from '../lib/movies'
 import type { ContentType } from '../types'
+
+type DownloadSidebarSummary = {
+  activeCount: number
+  topProgress: number
+  resolvingCount: number
+}
 
 type SidebarProps = {
   contentType: ContentType
@@ -13,6 +19,7 @@ type SidebarProps = {
   recentCount: number
   preferencesOpen: boolean
   downloadsOpen: boolean
+  downloadSummary: DownloadSidebarSummary
   onContentTypeChange: (type: ContentType) => void
   onCatalogChange: (id: string) => void
   onOpenPreferences: () => void
@@ -34,6 +41,7 @@ export function Sidebar({
   recentCount,
   preferencesOpen,
   downloadsOpen,
+  downloadSummary,
   onContentTypeChange,
   onCatalogChange,
   onOpenPreferences,
@@ -45,6 +53,9 @@ export function Sidebar({
 }: SidebarProps) {
   const allOptions = [...libraryCatalogOptions, ...catalogOptions]
   const swipeDismiss = useSwipeDismiss(() => onClose?.(), 'left')
+  const { activeCount, topProgress, resolvingCount } = downloadSummary
+  const progressPercent = Math.round(topProgress * 100)
+  const showDownloadActivity = activeCount > 0 || resolvingCount > 0
 
   function handleNavigate(action: () => void) {
     action()
@@ -175,12 +186,36 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => handleNavigate(onOpenDownloads)}
-          className={`mt-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
+          className={`mt-1 flex w-full flex-col rounded-md px-2 py-1.5 text-left transition ${
             downloadsOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'
           }`}
         >
-          <Download size={15} />
-          <span className="truncate">Downloads</span>
+          <span className="flex h-6 items-center gap-2 text-[13px] font-medium">
+            {showDownloadActivity && activeCount > 0 ? (
+              <Loader2 className="animate-spin text-[var(--mac-accent)]" size={15} />
+            ) : (
+              <Download size={15} />
+            )}
+            <span className="min-w-0 flex-1 truncate">Downloads</span>
+            {activeCount > 0 ? (
+              <span className="rounded-full bg-[var(--mac-accent)] px-1.5 text-[10px] font-bold leading-4 text-[var(--mac-accent-text)]">
+                {activeCount}
+              </span>
+            ) : resolvingCount > 0 ? (
+              <span className="text-[10px] font-semibold text-[var(--mac-secondary)]">Starting</span>
+            ) : null}
+            {activeCount > 0 ? (
+              <span className="text-[10px] font-semibold tabular-nums text-[var(--mac-secondary)]">{progressPercent}%</span>
+            ) : null}
+          </span>
+          {activeCount > 0 ? (
+            <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-[var(--mac-border)]">
+              <span
+                className="block h-full rounded-full bg-[var(--mac-accent)] transition-[width] duration-500"
+                style={{ width: `${Math.max(progressPercent, 2)}%` }}
+              />
+            </span>
+          ) : null}
         </button>
       </div>
     </aside>

@@ -1,10 +1,12 @@
 import { createServer } from 'node:http'
 import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, extname, join, normalize, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { fetchTorboxAccount, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
+import { fetchTorboxAccount, isVideoFilename, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
+import { serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -13,7 +15,43 @@ const jobsFile = join(dataDir, 'downloads.json')
 const serverLogFile = join(dataDir, 'server.log')
 const downloadLogDir = join(dataDir, 'logs')
 const jsonCacheDir = join(dataDir, 'json-cache')
-const defaultDownloadDir = process.env.TORBOX_DOWNLOAD_DIR || '/media/movies'
+
+function isDockerRuntime() {
+  try {
+    return existsSync('/.dockerenv')
+  } catch {
+    return false
+  }
+}
+
+function defaultDownloadRoot() {
+  if (process.env.TORBOX_DOWNLOAD_DIR) return process.env.TORBOX_DOWNLOAD_DIR
+  if (isDockerRuntime()) return '/media/movies'
+  if (process.env.NODE_ENV === 'production') return '/media/movies'
+  return join(homedir(), 'Downloads', 'Torfin')
+}
+
+function expandUserPath(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return trimmed
+  if (trimmed === '~') return homedir()
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return join(homedir(), trimmed.slice(2))
+  }
+  return trimmed
+}
+
+function resolveDownloadRoot(savePath) {
+  const expandedDefault = resolve(expandUserPath(defaultDownloadDir))
+  const raw = String(savePath || '').trim()
+  if (!raw) return expandedDefault
+  if (raw === '/media/movies' && defaultDownloadDir !== '/media/movies') {
+    return expandedDefault
+  }
+  return resolve(expandUserPath(raw))
+}
+
+const defaultDownloadDir = defaultDownloadRoot()
 const defaultJellyfinUrl = process.env.JELLYFIN_URL || ''
 const defaultJellyfinApiKey = process.env.JELLYFIN_API_KEY || ''
 const jellyfinPathMapFrom = process.env.JELLYFIN_PATH_MAP_FROM || defaultDownloadDir
@@ -371,7 +409,7 @@ function sanitizeFilename(value, fallback = 'Torfin Download.mkv') {
 }
 
 function safeTargetPath(downloadDir, folderName, filename) {
-  const root = resolve(downloadDir || defaultDownloadDir)
+  const root = resolveDownloadRoot(downloadDir)
   const folder = folderName ? sanitizeFilename(folderName, '') : ''
   const targetDir = resolve(root, folder)
   if (!targetDir.startsWith(root)) throw new Error('Download folder escapes the configured root.')
@@ -885,7 +923,7 @@ function validateDownloadProbe(probe, filename) {
   if (contentType.startsWith('image/') || contentType.includes('text/html') || contentType.includes('application/json')) {
     throw new Error(`Torbox returned ${probe.contentType || 'a non-video response'} instead of a media file. Pick another result or try again after Torbox finishes caching it.`)
   }
-  if (isVideoName(filename) && size > 0 && size < 5_000_000) {
+  if (isVideoFilename(filename) && size > 0 && size < 5_000_000) {
     throw new Error(`Torbox returned a tiny ${size} byte response for a video file. That usually means the selected Torbox file is artwork or an error page, not the movie.`)
   }
 }
@@ -1330,6 +1368,17 @@ async function handleApi(request, response, pathname) {
   }
   if (pathname === '/api/resolve-torbox-stream') {
     sendJson(response, 200, { url: await resolveTorboxStream(body) })
+    return
+  }
+  if (pathname === '/api/start-hls-transcode' && request.method === 'POST') {
+    sendJson(response, 200, {
+      url: await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null),
+    })
+    return
+  }
+  if (pathname.startsWith('/api/hls-transcode/') && request.method === 'GET') {
+    if (serveHlsTranscodeFile(pathname, response)) return
+    sendError(response, 404, 'Transcode session not found')
     return
   }
   if (pathname === '/api/downloads' && request.method === 'GET') {

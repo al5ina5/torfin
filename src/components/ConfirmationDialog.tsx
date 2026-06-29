@@ -3,6 +3,7 @@ type ConfirmationDialogProps = {
   title: string
   message: string
   confirmLabel?: string
+  confirmTone?: 'primary' | 'danger'
   onConfirm: () => void
   onCancel: () => void
 }
@@ -12,10 +13,16 @@ export function ConfirmationDialog({
   title,
   message,
   confirmLabel = 'Confirm',
+  confirmTone = 'danger',
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
   if (!open) return null
+
+  const confirmClassName =
+    confirmTone === 'primary'
+      ? 'h-8 rounded-md bg-[var(--mac-accent)] px-3 text-[12px] font-semibold text-[var(--mac-accent-text)] transition hover:brightness-95'
+      : 'h-8 rounded-md bg-red-500 px-3 text-[12px] font-semibold text-white transition hover:bg-red-600'
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-black/25 p-4 backdrop-blur-sm" onClick={onCancel}>
@@ -36,11 +43,7 @@ export function ConfirmationDialog({
             >
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              className="h-8 rounded-md bg-red-500 px-3 text-[12px] font-semibold text-white transition hover:bg-red-600"
-            >
+            <button type="button" onClick={onConfirm} className={confirmClassName}>
               {confirmLabel}
             </button>
           </div>

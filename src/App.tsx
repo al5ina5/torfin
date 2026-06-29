@@ -13,6 +13,7 @@ import { MovieGrid } from './components/MovieGrid'
 import { MovieList } from './components/MovieList'
 import { PreferencesModal } from './components/PreferencesModal'
 import { Sidebar } from './components/Sidebar'
+import { useAppModalRoute } from './hooks/useAppModalRoute'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { useDockBadge } from './hooks/useDockBadge'
 import { useDownloadNotifications } from './hooks/useDownloadNotifications'
@@ -21,9 +22,9 @@ import { useJellyfinRefresh } from './hooks/useJellyfinRefresh'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSecrets } from './hooks/useSecrets'
-import { isTauriRuntime, loadJson, postApi, resolveStreamUrl } from './lib/api'
+import { getApi, isTauriRuntime, loadJson, postApi, resolveStreamUrl } from './lib/api'
 import { catalogPageUrl, enrichMovieFromMeta, metaUrl, normalizeCatalogItem, normalizeSeriesEpisodes, similarMoviesFromMeta, searchUrl } from './lib/cinemeta'
-import { allProfileOptions, findCustomProfile } from './lib/custom-profiles'
+import { allProfileOptions, builtinProfileList, findCustomProfile } from './lib/custom-profiles'
 import { allFilterPresets, createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
 import {
   destinationToLegacyConfig,
@@ -34,11 +35,13 @@ import {
   migrateLegacySecrets,
   readyDestinations,
   shouldPromptDestinationPicker,
+  syncLocalDestinationWithServer,
 } from './lib/download-destinations'
 import {
   buildPollConfig,
   defaultDownloadConfig,
   dedupeDownloadJobs,
+  downloadSidebarSummary,
   localPayload,
   makeDownloadFilename,
   makeMovieFolderName,
@@ -52,7 +55,7 @@ import { hydrateUrl, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugin
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
 import { applyThemeMode, loadThemeMode, saveThemeMode } from './lib/theme'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies } from './lib/playback-progress'
-import { inspectMedia, needsTranscodeFallback, startHlsTranscode } from './lib/playback'
+import { inspectMedia, needsTranscodeFallback, playbackUnavailableMessage, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { STORAGE_KEYS, loadStoredJson, loadStoredString, saveStoredJson, saveStoredString } from './lib/storage'
@@ -102,11 +105,7 @@ function loadPreferences() {
   }
 }
 
-const resultProfiles: Array<{ id: ResultProfile; label: string; description: string }> = [
-  { id: 'netflix', label: 'Netflix', description: 'Clean instant-play picks, one best link per resolution.' },
-  { id: 'dataSaver', label: 'Data Saver', description: 'Caps at 1080p and prefers smaller files.' },
-  { id: 'cinephile', label: 'Cinephile', description: 'Quality-first picks for 4K, HDR, Remux, and Blu-ray.' },
-]
+const resultProfiles = builtinProfileList()
 
 const defaultLayout = { leftSidebarWidth: 220, rightSidebarWidth: 520 }
 const layoutLimits = {
@@ -170,6 +169,7 @@ export default function App() {
   const [destinationSecretMap, setDestinationSecretMap] = useState<Record<string, { jellyfinApiKey: string; sshPassword: string }>>({})
   const [destinationPickerOpen, setDestinationPickerOpen] = useState(false)
   const [pendingDownload, setPendingDownload] = useState<{ stream: StreamResult; index: number } | null>(null)
+  const [torboxKeyPromptOpen, setTorboxKeyPromptOpen] = useState(false)
   const [jellyfinSignInBaseUrl, setJellyfinSignInBaseUrl] = useState('')
   const [jellyfinSignInCallback, setJellyfinSignInCallback] = useState<((token: string) => void) | null>(null)
   const [downloadJobs, setDownloadJobs] = useState<DownloadJob[]>(dedupeDownloadJobs(loadStoredJson<DownloadJob[]>(STORAGE_KEYS.downloadJobs, []).map(withDownloadTimestamp)))
@@ -212,6 +212,7 @@ export default function App() {
   const pendingAutoPlayRef = useRef(false)
 
   const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
+  const { route, closeModal, openSettings, openDownloads, openFilters, setSettingsTab } = useAppModalRoute()
   const debouncedQuery = useDebouncedValue(query, 300).trim()
   const shouldRemoteSearch = debouncedQuery.length >= 2
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
@@ -229,6 +230,7 @@ export default function App() {
   } as CSSProperties
 
   const profileOptions = useMemo(() => allProfileOptions(preferences), [preferences])
+  const downloadSummary = useMemo(() => downloadSidebarSummary(downloadJobs), [downloadJobs])
   const activeCustomProfile = useMemo(() => findCustomProfile(preferences, resultProfile), [preferences, resultProfile])
   const inspectorMovie = enrichedMovie ?? selectedMovie
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
@@ -266,6 +268,15 @@ export default function App() {
     return { streams: found.sort((a, b) => b.rank - a.rank), errors }
   })
   const { data: serverStatuses } = useSWR(tauri ? null : '/api/downloads', loadServerDownloads, { refreshInterval: 1000 })
+  const { data: serverHealth } = useSWR(tauri ? null : '/api/health', () => getApi<{ downloadDir: string }>('/api/health'), { revalidateOnFocus: false })
+
+  useEffect(() => {
+    if (!serverHealth?.downloadDir || tauri) return
+    setDownloadConfig((current) => {
+      const next = syncLocalDestinationWithServer(current, serverHealth.downloadDir)
+      return next === current ? current : next
+    })
+  }, [serverHealth?.downloadDir, tauri])
 
   const activeDestination = useMemo(() => getDestination(downloadConfig), [downloadConfig])
   const jellyfinDestination = useMemo(
@@ -302,6 +313,32 @@ export default function App() {
   useDockBadge(downloadJobs)
 
   useEffect(() => {
+    switch (route.kind) {
+      case 'settings':
+        setPreferencesTab(route.tab)
+        setPreferencesOpen(true)
+        setDownloadsOpen(false)
+        setFiltersOpen(false)
+        break
+      case 'downloads':
+        setDownloadsOpen(true)
+        setPreferencesOpen(false)
+        setFiltersOpen(false)
+        break
+      case 'filters':
+        setFiltersOpen(true)
+        setPreferencesOpen(false)
+        setDownloadsOpen(false)
+        break
+      case 'none':
+        setPreferencesOpen(false)
+        setDownloadsOpen(false)
+        setFiltersOpen(false)
+        break
+    }
+  }, [route])
+
+  useEffect(() => {
     let cancelled = false
     void (async () => {
       const entries = await Promise.all(
@@ -317,7 +354,7 @@ export default function App() {
   useEffect(() => {
     if (!secretsLoaded || !downloadConfig.destinations.length) return
     void migrateLegacySecrets(downloadConfig, { jellyfinApiKey, sshPassword })
-  }, [downloadConfig, downloadConfig.destinations.length, jellyfinApiKey, secretsLoaded, sshPassword])
+  }, [downloadConfig.destinations.length, jellyfinApiKey, secretsLoaded, sshPassword])
 
   useEffect(() => {
     applyThemeMode(preferences.theme)
@@ -328,13 +365,6 @@ export default function App() {
     if (isLibraryCatalog(catalogId)) {
       setSelectedMovie(null)
       setMovieError('')
-      if (catalogId === 'watchlist') {
-        setMovies(watchlist.filter((movie) => movie.type === contentType))
-      } else if (catalogId === 'recent') {
-        setMovies(recentViews.filter((movie) => movie.type === contentType))
-      } else {
-        setMovies(continueWatchingMovies().filter((movie) => movie.type === contentType))
-      }
       setCatalogSkip(0)
       setHasMoreMovies(false)
       return
@@ -354,7 +384,21 @@ export default function App() {
       setCatalogSkip(0)
       setHasMoreMovies(true)
     }
-  }, [catalogData, catalogId, contentType, filteredCatalogUrl, recentViews, watchlist])
+  }, [catalogData, catalogId, contentType, filteredCatalogUrl])
+
+  useEffect(() => {
+    if (!isLibraryCatalog(catalogId)) return
+    setMovieError('')
+    if (catalogId === 'watchlist') {
+      setMovies(watchlist.filter((movie) => movie.type === contentType))
+    } else if (catalogId === 'recent') {
+      setMovies(recentViews.filter((movie) => movie.type === contentType))
+    } else {
+      setMovies(continueWatchingMovies().filter((movie) => movie.type === contentType))
+    }
+    setCatalogSkip(0)
+    setHasMoreMovies(false)
+  }, [catalogId, contentType, recentViews, watchlist])
   useEffect(() => {
     if (debouncedQuery.length >= 2) {
       setSearchHistory(recordSearchQuery(debouncedQuery))
@@ -436,11 +480,11 @@ export default function App() {
   ])
 
   useEffect(() => {
-    const modalOpen = filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || Boolean(confirmRemove)
+    const modalOpen = filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || Boolean(confirmRemove)
     const mobileOverlayOpen = !isDesktop && (sidebarOpen || Boolean(selectedMovie))
     document.body.classList.toggle('modal-open', modalOpen || mobileOverlayOpen)
     return () => document.body.classList.remove('modal-open')
-  }, [confirmRemove, downloadsOpen, filtersOpen, isDesktop, jellyfinSignInOpen, preferencesOpen, selectedMovie, sidebarOpen])
+  }, [confirmRemove, downloadsOpen, filtersOpen, isDesktop, jellyfinSignInOpen, preferencesOpen, selectedMovie, sidebarOpen, torboxKeyPromptOpen])
 
   useEffect(() => {
     if (isDesktop) setSidebarOpen(false)
@@ -480,7 +524,7 @@ export default function App() {
 
   function handleApplyFilterPreset(preset: FilterPreset) {
     setMovieFilters({ ...preset.filters })
-    setFiltersOpen(false)
+    closeModal()
   }
 
   function handleSaveFilterPreset(name: string) {
@@ -548,7 +592,7 @@ export default function App() {
     if (!selectedMovie) return
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
     setDownloadingStreamKey(key)
-    setDownloadsOpen(true)
+    openDownloads()
     await queueDownload(stream, index, selectedMovie, episodeSelection, destination)
   }
 
@@ -611,9 +655,7 @@ export default function App() {
   async function startDownload(stream: StreamResult, index: number) {
     if (!selectedMovie) return
     if (!torboxApiKey.trim()) {
-      window.alert('Add your Torbox API key in Settings → Plugins before downloading.')
-      setPreferencesTab('plugins')
-      setPreferencesOpen(true)
+      setTorboxKeyPromptOpen(true)
       return
     }
     if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
@@ -653,9 +695,10 @@ export default function App() {
   }
 
   const handlePlaybackFailure = useCallback(async () => {
+    if (!playbackUrl) return
     if (!needsTranscodeFallback(currentSourceUrl, playbackUrl)) {
       setPlaybackUrl('')
-      setPlaybackError('This stream is not playable. Try another result.')
+      setPlaybackError(playbackUnavailableMessage())
       setPlaybackStatus('')
       return
     }
@@ -687,13 +730,13 @@ export default function App() {
       }
     })
 
-    if (audioIndex === null && subtitleIndex === null) {
+    if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
       setPlaybackUrl(sourceUrl)
       setPlaybackStatus('')
       return
     }
 
-    setPlaybackStatus('Preparing')
+    setPlaybackStatus(audioIndex === null && subtitleIndex === null ? 'Transcoding' : 'Preparing')
     try {
       const hlsUrl = await startHlsTranscode(sourceUrl, audioIndex, subtitleIndex)
       setPlaybackUrl(hlsUrl)
@@ -792,15 +835,13 @@ export default function App() {
     if (!selectedMovie || selectedMovie.type !== 'series' || selectedSeason === null || !seriesEpisodes?.length) return
     const destination = getDefaultDestination(downloadConfig)
     if (!destination || !readyDestinations(downloadConfig, tauri).some((entry) => entry.id === destination.id)) {
-      window.alert('Set up a download destination in Settings → Downloads before batch downloading.')
-      setPreferencesTab('downloads')
-      setPreferencesOpen(true)
+      openSettings('downloads')
       return
     }
     const episodes = seriesEpisodes.filter((entry) => entry.season === selectedSeason)
     if (!episodes.length) return
     setBatchDownloading(true)
-    setDownloadsOpen(true)
+    openDownloads()
     try {
       for (const entry of episodes) {
         const urlResults = await Promise.allSettled(
@@ -860,24 +901,25 @@ export default function App() {
   }
 
   useKeyboardShortcuts({
-    modalOpen: filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || Boolean(confirmRemove),
+    modalOpen: filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || Boolean(confirmRemove),
     displayedMovies,
     focusedMovieIndex,
     setFocusedMovieIndex,
     onSelectMovie: handleSelectMovie,
     onFocusSearch: () => searchRef.current?.focus(),
-    onOpenSettings: () => setPreferencesOpen(true),
+    onOpenSettings: () => openSettings('general'),
     onPlayTopStream: () => {
       if (compactStreams[0]) void playStream(compactStreams[0], 0)
     },
     onCloseModals: () => {
+      if (torboxKeyPromptOpen) {
+        setTorboxKeyPromptOpen(false)
+        return
+      }
       if (filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || confirmRemove) {
-        setFiltersOpen(false)
-        setDownloadsOpen(false)
-        setDownloadSortOpen(false)
-        setPreferencesOpen(false)
         setJellyfinSignInOpen(false)
         setConfirmRemove(null)
+        closeModal()
         return
       }
       if (!isDesktop && selectedMovie) {
@@ -977,10 +1019,11 @@ export default function App() {
             recentCount={recentViews.length}
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
+            downloadSummary={downloadSummary}
             onContentTypeChange={setContentType}
             onCatalogChange={setCatalogId}
-            onOpenPreferences={() => setPreferencesOpen(true)}
-            onOpenDownloads={() => setDownloadsOpen(true)}
+            onOpenPreferences={() => openSettings('general')}
+            onOpenDownloads={openDownloads}
             onResetSelection={() => setSelectedMovie(null)}
           />
         ) : null}
@@ -999,10 +1042,11 @@ export default function App() {
             recentCount={recentViews.length}
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
+            downloadSummary={downloadSummary}
             onContentTypeChange={setContentType}
             onCatalogChange={setCatalogId}
-            onOpenPreferences={() => setPreferencesOpen(true)}
-            onOpenDownloads={() => setDownloadsOpen(true)}
+            onOpenPreferences={() => openSettings('general')}
+            onOpenDownloads={openDownloads}
             onResetSelection={() => setSelectedMovie(null)}
           />
         ) : null}
@@ -1086,7 +1130,7 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setFiltersOpen(true)}
+              onClick={openFilters}
               className={`grid size-8 place-items-center rounded-md border border-[var(--mac-border)] transition hover:bg-[var(--mac-control-hover)] ${
                 Object.values(movieFilters).some((value) => value && value !== 'catalog')
                   ? 'bg-[var(--mac-accent)] text-[var(--mac-accent-text)]'
@@ -1203,7 +1247,7 @@ export default function App() {
           open={filtersOpen}
           filters={movieFilters}
           presets={filterPresets}
-          onClose={() => setFiltersOpen(false)}
+          onClose={closeModal}
           onChange={setMovieFilters}
           onReset={() => setMovieFilters(defaultMovieFilters)}
           onApplyPreset={handleApplyFilterPreset}
@@ -1214,7 +1258,7 @@ export default function App() {
           jobs={downloadJobs}
           sort={downloadSort}
           sortOpen={downloadSortOpen}
-          onClose={() => { setDownloadsOpen(false); setDownloadSortOpen(false) }}
+          onClose={() => { setDownloadSortOpen(false); closeModal() }}
           onSortOpen={setDownloadSortOpen}
           onSortChange={setDownloadSort}
           onClearFinished={() => setDownloadJobs((current) => current.filter((job) => !(job.status?.complete || job.status?.state.startsWith('error:') || job.error)))}
@@ -1236,13 +1280,11 @@ export default function App() {
           onSelect={(destination) => { void handleDestinationPick(destination) }}
           onSetup={() => {
             setDestinationPickerOpen(false)
-            setPreferencesTab('downloads')
-            setPreferencesOpen(true)
+            openSettings('downloads')
           }}
           onManage={() => {
             setDestinationPickerOpen(false)
-            setPreferencesTab('downloads')
-            setPreferencesOpen(true)
+            openSettings('downloads')
           }}
         />
         <PreferencesModal
@@ -1253,8 +1295,8 @@ export default function App() {
           preferences={preferences}
           downloadConfig={downloadConfig}
           torboxApiKey={torboxApiKey}
-          onClose={() => setPreferencesOpen(false)}
-          onTabChange={setPreferencesTab}
+          onClose={closeModal}
+          onTabChange={setSettingsTab}
           onUpdatePlugin={(pluginId, patch) => setPlugins((current) => current.map((plugin) => (plugin.id === pluginId ? { ...plugin, ...patch } : plugin)))}
           onUpdatePreferences={updatePreferences}
           onUpdateDownloadConfig={updateDownloadConfig}
@@ -1296,6 +1338,18 @@ export default function App() {
           } catch (error) {
             window.alert(error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
           }
+        }}
+      />
+      <ConfirmationDialog
+        open={torboxKeyPromptOpen}
+        title="Torbox API key required"
+        message="Downloads need a Torbox API key to resolve streams. Add your key in Settings → Plugins to continue."
+        confirmLabel="Open Settings"
+        confirmTone="primary"
+        onCancel={() => setTorboxKeyPromptOpen(false)}
+        onConfirm={() => {
+          setTorboxKeyPromptOpen(false)
+          openSettings('plugins')
         }}
       />
       <ConfirmationDialog

@@ -53,9 +53,11 @@ export function VideoPlayer({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null)
   const videoElRef = useRef<HTMLVideoElement | null>(null)
+  const ignoreErrorsRef = useRef(false)
 
   useEffect(() => {
     if (!url || !hostRef.current) return
+    ignoreErrorsRef.current = false
 
     const videoElement = document.createElement('video-js')
     videoElement.classList.add('video-js', 'vjs-big-play-centered', 'movie-player-video')
@@ -75,7 +77,10 @@ export function VideoPlayer({
       sources: [type ? { src: url, type } : { src: url }],
     })
     playerRef.current = player
-    const handleError = () => onError?.()
+    const handleError = () => {
+      if (ignoreErrorsRef.current) return
+      onError?.()
+    }
     const handleTimeUpdate = () => {
       const current = player.currentTime()
       const duration = player.duration()
@@ -94,6 +99,7 @@ export function VideoPlayer({
     })
 
     return () => {
+      ignoreErrorsRef.current = true
       player.off('error', handleError)
       player.off('timeupdate', handleTimeUpdate)
       player.off('ended', handleEnded)

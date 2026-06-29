@@ -1,3 +1,5 @@
+import { isTauriRuntime } from './api'
+
 const WEB_SECRET_PREFIX = 'torfin.web-secret'
 
 function localKey(key: string) {
@@ -11,10 +13,6 @@ function canUseLocalStorage() {
 async function invokeSecret<T>(command: 'get_secret' | 'set_secret' | 'delete_secret', args: Record<string, unknown>) {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(command, args)
-}
-
-function isTauriRuntime() {
-  return Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 }
 
 function canFallback(key: string) {

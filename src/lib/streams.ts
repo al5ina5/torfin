@@ -52,7 +52,7 @@ function streamSizeGb(stream: StreamResult) {
   return Number.POSITIVE_INFINITY
 }
 
-function isCached(stream: StreamResult) {
+export function isStreamCached(stream: StreamResult) {
   return /cached|instant|torbox/i.test(streamText(stream))
 }
 
@@ -86,7 +86,7 @@ export function filterStreamsForProfile(
   if (customProfile) return filterStreamsForCustomProfile(streams, customProfile)
 
   const clean = streams.filter((stream) => !isLowQualityCapture(stream) && !isThreeDimensional(stream))
-  const cached = clean.filter(isCached)
+  const cached = clean.filter(isStreamCached)
   const base = preferCachedResults && cached.length ? cached : clean
 
   if (profile === 'netflix') {
@@ -131,7 +131,7 @@ export function filterStreamsForCustomProfile(streams: StreamResult[], profile: 
   if (profile.hideCam) base = base.filter((stream) => !isLowQualityCapture(stream))
   if (profile.hide3d) base = base.filter((stream) => !isThreeDimensional(stream))
 
-  const cached = base.filter(isCached)
+  const cached = base.filter(isStreamCached)
   if (profile.preferCached && cached.length) base = cached
 
   base = base.filter((stream) => {

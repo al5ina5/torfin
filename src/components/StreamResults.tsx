@@ -1,4 +1,6 @@
-import { ChevronDown, ChevronUp, Download, Loader2, Play, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, Loader2, Play, RefreshCw, Zap } from 'lucide-react'
+
+import { isStreamCached } from '../lib/streams'
 
 import {
   canDownload,
@@ -13,7 +15,7 @@ type StreamResultsProps = {
   compactStreams: StreamResult[]
   loading: boolean
   profile: ResultProfile
-  profileOptions: Array<{ id: ResultProfile; label: string }>
+  profileOptions: Array<{ id: ResultProfile; label: string; description?: string }>
   onProfileChange: (profile: ResultProfile) => void
   resultsExpanded: boolean
   onToggleExpanded: () => void
@@ -67,6 +69,7 @@ export function StreamResults({
             key={result.id}
             type="button"
             onClick={() => onProfileChange(result.id)}
+            title={result.description || undefined}
             className={`h-7 shrink-0 rounded-md px-2 text-[11px] font-semibold transition ${
               profile === result.id
                 ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
@@ -112,15 +115,27 @@ export function StreamResults({
                 source.toLowerCase() === stream.pluginName.toLowerCase()
                   ? meta
                   : [meta, source].filter(Boolean).join(' · ')
+              const cached = isStreamCached(stream)
               return (
                 <article
                   key={`${stream.pluginName}-${stream.title}-${index}`}
                   className="group flex items-center gap-2.5 rounded-lg px-3 py-2.5 transition hover:bg-[var(--mac-control)]/50"
                 >
                   <div className="min-w-0 flex-1">
-                    <h4 className="truncate text-[13px] font-semibold leading-4 text-[var(--mac-text)]" title={title}>
-                      {title}
-                    </h4>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="truncate text-[13px] font-semibold leading-4 text-[var(--mac-text)]" title={title}>
+                        {title}
+                      </h4>
+                      {cached ? (
+                        <span
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-px text-[10px] font-semibold leading-none text-emerald-700 dark:text-emerald-300 bg-emerald-500/15"
+                          title="Cached on Torbox — instant play"
+                        >
+                          <Zap size={9} fill="currentColor" />
+                          Cached
+                        </span>
+                      ) : null}
+                    </div>
                     {detail ? (
                       <p className="mt-0.5 truncate text-[11px] leading-4 text-[var(--mac-secondary)]" title={detail}>
                         {detail}

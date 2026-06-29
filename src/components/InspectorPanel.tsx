@@ -27,7 +27,7 @@ type InspectorPanelProps = {
   batchDownloading?: boolean
   streams: StreamResult[]
   compactStreams: StreamResult[]
-  profileOptions: Array<{ id: ResultProfile; label: string }>
+  profileOptions: Array<{ id: ResultProfile; label: string; description?: string }>
   loadingStreams: boolean
   streamErrors: string[]
   streamEmptyMessage: string

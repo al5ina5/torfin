@@ -6,7 +6,7 @@ export const defaultDownloadConfig: DownloadConfig = {
   jellyfinUrl: '',
   jellyfinApiKey: '',
   downloader: 'local',
-  localSavePath: '/media/movies',
+  localSavePath: '~/Downloads/Torfin',
   tvSavePath: '',
   sshHost: '',
   sshUsername: '',
@@ -204,6 +204,13 @@ export function bytesLabel(bytes: number) {
     unit += 1
   }
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
+}
+
+export function downloadSidebarSummary(jobs: DownloadJob[]) {
+  const active = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused)
+  const topProgress = active.reduce((max, job) => Math.max(max, job.status?.progress ?? 0), 0)
+  const resolving = jobs.filter((job) => !job.status && !job.error).length
+  return { activeCount: active.length, topProgress, resolvingCount: resolving }
 }
 
 export function etaLabel(seconds: number) {

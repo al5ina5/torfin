@@ -1,6 +1,9 @@
 import { isTauriRuntime, postApi } from './api'
+import { DEFAULT_LOCAL_DOWNLOAD_PATH, DOCKER_DOWNLOAD_PATH, isLegacyDockerDownloadPath, syncLocalDestinationWithServer } from './paths'
 import { getSecret, setSecret } from './secrets'
 import type { DownloadConfig, DownloadDestination, DownloadDestinationKind, Movie } from '../types'
+
+export { syncLocalDestinationWithServer }
 
 export type DestinationSecrets = {
   jellyfinApiKey: string
@@ -40,7 +43,7 @@ export function newDestination(kind: DownloadDestinationKind, isDesktop: boolean
     name: kind === 'local' ? defaultLocalDestinationName(isDesktop) : defaultRemoteDestinationName(),
     kind,
     isDefault: false,
-    moviesPath: kind === 'local' ? (isDesktop ? `${homeHint()}/Movies/Torfin` : '/media/movies') : '',
+    moviesPath: kind === 'local' ? DEFAULT_LOCAL_DOWNLOAD_PATH : '',
     tvPath: '',
     jellyfinUrl: '',
     refreshOnComplete: kind === 'remote-jellyfin',
@@ -50,13 +53,23 @@ export function newDestination(kind: DownloadDestinationKind, isDesktop: boolean
   }
 }
 
-function homeHint() {
-  return isTauriRuntime() ? '~/Movies/Torfin' : '/media/movies'
+function repairLegacyLocalPaths(config: DownloadConfig, isDesktop: boolean): DownloadConfig {
+  const destinations = config.destinations.map((entry) => {
+    if (entry.kind !== 'local') return entry
+    if (!entry.moviesPath.trim()) {
+      return { ...entry, moviesPath: DEFAULT_LOCAL_DOWNLOAD_PATH }
+    }
+    if (isDesktop && isLegacyDockerDownloadPath(entry.moviesPath)) {
+      return { ...entry, moviesPath: DEFAULT_LOCAL_DOWNLOAD_PATH }
+    }
+    return entry
+  })
+  return normalizeDestinations({ ...config, destinations })
 }
 
 export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean): DownloadConfig {
   if (config.destinations?.length) {
-    return normalizeDestinations(config)
+    return repairLegacyLocalPaths(normalizeDestinations(config), isDesktop)
   }
 
   const hasLegacyRemote = Boolean(config.sshHost.trim() && config.sshSavePath.trim())
@@ -69,7 +82,7 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
       name: defaultRemoteDestinationName(),
       kind: 'remote-jellyfin',
       isDefault: config.downloader === 'ssh' || hasLegacyRemote,
-      moviesPath: config.sshSavePath || config.savePath || '/media/movies',
+      moviesPath: config.sshSavePath || config.savePath || DOCKER_DOWNLOAD_PATH,
       tvPath: config.tvSavePath || '',
       jellyfinUrl: config.jellyfinUrl || '',
       refreshOnComplete: config.refreshJellyfinOnComplete,
@@ -85,7 +98,7 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
       name: defaultLocalDestinationName(isDesktop),
       kind: 'local',
       isDefault: config.downloader === 'local' || !hasLegacyRemote,
-      moviesPath: config.localSavePath || '/media/movies',
+      moviesPath: config.localSavePath || DEFAULT_LOCAL_DOWNLOAD_PATH,
       tvPath: config.tvSavePath || '',
       jellyfinUrl: config.jellyfinUrl || '',
       refreshOnComplete: config.refreshJellyfinOnComplete,
@@ -99,7 +112,7 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
     destinations.push({
       ...newDestination(isDesktop ? 'remote-jellyfin' : 'local', isDesktop),
       isDefault: true,
-      moviesPath: isDesktop ? '' : '/media/movies',
+      moviesPath: isDesktop ? '' : DOCKER_DOWNLOAD_PATH,
     })
   }
 
@@ -109,11 +122,13 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
 
   const active = destinations.find((entry) => entry.isDefault) ?? destinations[0]
 
-  return normalizeDestinations({
+  const migrated = normalizeDestinations({
     ...config,
     destinations,
     activeDestinationId: active.id,
   })
+
+  return repairLegacyLocalPaths(migrated, isDesktop)
 }
 
 function normalizeDestinations(config: DownloadConfig): DownloadConfig {

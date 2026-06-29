@@ -79,9 +79,9 @@ async function runWithPlaywright(url) {
 
     // Inspector panel
     await page.getByText('Stream Results').first().waitFor({ state: 'visible', timeout: 15000 })
-    await page.getByRole('button', { name: 'Netflix' }).waitFor({ state: 'visible' })
-    await page.getByRole('button', { name: 'Data Saver' }).waitFor({ state: 'visible' })
-    await page.getByRole('button', { name: 'Cinephile' }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'Reliable' }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'Fastest' }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'Best' }).waitFor({ state: 'visible' })
 
     // Stream cards should expose play/download controls when results load
     await page.waitForTimeout(3000)
