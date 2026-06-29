@@ -16,7 +16,7 @@ import { Sidebar } from './components/Sidebar'
 import { useAppModalRoute } from './hooks/useAppModalRoute'
 import { useCatalogScrollLoad } from './hooks/useCatalogScrollLoad'
 import { readAppRoute } from './lib/app-routes'
-import { useDebouncedValue } from './hooks/useDebouncedValue'
+import { useSearchQueryRoute } from './hooks/useSearchQueryRoute'
 import { useDockBadge } from './hooks/useDockBadge'
 import { useErrorListToast, useMessageToast } from './hooks/useErrorToasts'
 import { useDownloadNotifications } from './hooks/useDownloadNotifications'
@@ -48,9 +48,12 @@ import {
   downloadJobKey,
   downloadSidebarSummary,
   isActiveDownloadJob,
+  isDownloadDismissed,
+  loadDismissedDownloadIds,
   localPayload,
   makeDownloadFilename,
   makeMovieFolderName,
+  markDownloadDismissed,
   mergeServerDownloadJobs,
   qbittorrentPayload,
   withDownloadTimestamp,
@@ -152,7 +155,6 @@ export default function App() {
   const initialBrowse = initialBrowseState()
   const [contentType, setContentType] = useState<ContentType>(initialBrowse.contentType)
   const [catalogId, setCatalogId] = useState<string>(initialBrowse.catalogId)
-  const [query, setQuery] = useState(initialBrowse.query)
   const [movies, setMovies] = useState<Movie[]>([])
   const [catalogSkip, setCatalogSkip] = useState(0)
   const [hasMoreMovies, setHasMoreMovies] = useState(true)
@@ -175,7 +177,14 @@ export default function App() {
   const [torboxKeyPromptOpen, setTorboxKeyPromptOpen] = useState(false)
   const [jellyfinSignInBaseUrl, setJellyfinSignInBaseUrl] = useState('')
   const [jellyfinSignInCallback, setJellyfinSignInCallback] = useState<((token: string) => void) | null>(null)
-  const [downloadJobs, setDownloadJobs] = useState<DownloadJob[]>(dedupeDownloadJobs(loadStoredJson<DownloadJob[]>(STORAGE_KEYS.downloadJobs, []).map(withDownloadTimestamp)))
+  const [downloadJobs, setDownloadJobs] = useState<DownloadJob[]>(() => {
+    const dismissed = loadDismissedDownloadIds()
+    return dedupeDownloadJobs(
+      loadStoredJson<DownloadJob[]>(STORAGE_KEYS.downloadJobs, [])
+        .map(withDownloadTimestamp)
+        .filter((job) => !isDownloadDismissed(job, dismissed)),
+    )
+  })
   const [downloadSort, setDownloadSort] = useState<DownloadSort>(loadStoredJson<DownloadSort>(STORAGE_KEYS.downloadSort, 'newest'))
   const [downloadSortOpen, setDownloadSortOpen] = useState(false)
   const [resultProfile, setResultProfile] = useState<ResultProfile>(preferences.defaultProfile)
@@ -224,7 +233,7 @@ export default function App() {
   const activePlaybackStreamRef = useRef<{ stream: StreamResult; index: number } | null>(null)
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
   const startupSyncedRef = useRef(false)
-  const dismissedDownloadIdsRef = useRef(new Set<string>())
+  const dismissedDownloadIdsRef = useRef(loadDismissedDownloadIds())
 
   const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
   const {
@@ -238,10 +247,16 @@ export default function App() {
     navigateSearch,
     navigateToTitle,
     closeTitle,
-    routeUrl,
   } = useAppModalRoute()
+  const { query, setQuery, debouncedQuery } = useSearchQueryRoute({
+    initialQuery: initialBrowse.query,
+    route,
+    contentType,
+    catalogId,
+    navigateSearch,
+    navigateBrowse,
+  })
   const titleLoadRef = useRef<string | null>(null)
-  const debouncedQuery = useDebouncedValue(query, 300).trim()
   const shouldRemoteSearch = debouncedQuery.length >= 2
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
   const baseCatalogUrl = isLibraryCatalog(catalogId) ? '' : catalogUrlMap(contentType)[selectedCatalog.id as keyof ReturnType<typeof catalogUrlMap>]
@@ -388,22 +403,9 @@ export default function App() {
 
   useEffect(() => {
     if (route.contentType !== contentType) setContentType(route.contentType)
-    if (route.searchQuery !== undefined) {
-      // Only sync URL → input when the user isn't mid-edit (query ahead of debounced value).
-      if (query === debouncedQuery && route.searchQuery !== query) setQuery(route.searchQuery)
-      return
-    }
+    if (route.searchQuery !== undefined) return
     if (route.catalogId !== catalogId) setCatalogId(route.catalogId)
-  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType, query, debouncedQuery])
-
-  const prevRouteUrlRef = useRef(routeUrl)
-  useEffect(() => {
-    const previous = prevRouteUrlRef.current
-    prevRouteUrlRef.current = routeUrl
-    if (previous !== routeUrl && previous.includes('/search') && route.searchQuery === undefined) {
-      setQuery('')
-    }
-  }, [routeUrl, route.searchQuery])
+  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType])
 
   useEffect(() => {
     if (!route.title) {
@@ -463,16 +465,6 @@ export default function App() {
     setPlaybackDuration(null)
     setPlaybackMediaOffset(0)
   }, [route.title, selectedMovie])
-
-  useEffect(() => {
-    if (debouncedQuery.length >= 2) {
-      if (route.searchQuery !== debouncedQuery) {
-        navigateSearch(contentType, debouncedQuery, true)
-      }
-    } else if (route.searchQuery) {
-      navigateBrowse(contentType, catalogId, true)
-    }
-  }, [debouncedQuery, contentType, catalogId, navigateBrowse, navigateSearch, route.searchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -1217,26 +1209,43 @@ export default function App() {
     }
   }
 
+  async function deleteDownloadOnServer(job: DownloadJob) {
+    const id = downloadJobKey(job)
+    if (!id) return
+    if (tauri) {
+      const mode = job.pollConfig?.mode
+      await import('@tauri-apps/api/core').then(({ invoke }) => {
+        if (mode === 'local') return invoke('cancel_local_url_download', { id })
+        return invoke('cancel_remote_url_download', { id })
+      })
+      return
+    }
+    const response = await fetch(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    if (!response.ok) throw new Error('Could not remove download from server.')
+  }
+
   async function cancelDownloadJob(job: DownloadJob) {
     const id = downloadJobKey(job)
     const name = job.movie.name
-    if (id) dismissedDownloadIdsRef.current.add(id)
-    setDownloadJobs((current) => current.filter((item) => downloadJobKey(item) !== id))
+    markDownloadDismissed(dismissedDownloadIdsRef.current, job)
+    setDownloadJobs((current) => current.filter((item) => !isDownloadDismissed(item, dismissedDownloadIdsRef.current)))
     toast.info('Download removed', name)
     if (!id) return
     try {
-      if (tauri) {
-        const mode = job.pollConfig?.mode
-        await import('@tauri-apps/api/core').then(({ invoke }) => {
-          if (mode === 'local') return invoke('cancel_local_url_download', { id })
-          return invoke('cancel_remote_url_download', { id })
-        })
-      } else {
-        await fetch(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      }
+      await deleteDownloadOnServer(job)
     } catch {
-      dismissedDownloadIdsRef.current.delete(id)
+      toast.error('Could not remove download on server', name)
     }
+  }
+
+  async function clearFinishedDownloads() {
+    const finished = downloadJobs.filter((job) => job.status?.complete || job.status?.state.startsWith('error:') || job.error)
+    const count = finished.length
+    if (!count) return
+    for (const job of finished) markDownloadDismissed(dismissedDownloadIdsRef.current, job)
+    setDownloadJobs((current) => current.filter((job) => !isDownloadDismissed(job, dismissedDownloadIdsRef.current)))
+    toast.info('Cleared finished downloads', `${count} ${count === 1 ? 'item' : 'items'} removed`)
+    await Promise.allSettled(finished.map((job) => deleteDownloadOnServer(job)))
   }
 
   async function pauseDownloadJob(job: DownloadJob) {
@@ -1408,22 +1417,12 @@ export default function App() {
 
   return (
     <main className="app-viewport overflow-hidden bg-[var(--mac-window)] text-[var(--mac-text)]">
-      {/* Mobile sidebar backdrop */}
-      {!isDesktop ? (
-        <div
-          className={`app-sidebar-backdrop ${sidebarOpen ? 'is-open' : ''}`}
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      ) : null}
-
       <div className="app-shell grid h-full" style={shellStyle}>
         {/* Desktop sidebar (in grid) */}
         {isDesktop ? (
           <Sidebar
             contentType={contentType}
             catalogId={catalogId}
-            activePluginCount={activePluginCount}
             watchlistCount={watchlist.length}
             continueCount={continueWatchingMovies().length}
             recentCount={recentViews.length}
@@ -1445,7 +1444,6 @@ export default function App() {
             onClose={() => setSidebarOpen(false)}
             contentType={contentType}
             catalogId={catalogId}
-            activePluginCount={activePluginCount}
             watchlistCount={watchlist.length}
             continueCount={continueWatchingMovies().length}
             recentCount={recentViews.length}
@@ -1680,11 +1678,7 @@ export default function App() {
           onClose={() => { setDownloadSortOpen(false); closeModal() }}
           onSortOpen={setDownloadSortOpen}
           onSortChange={setDownloadSort}
-          onClearFinished={() => {
-            const count = downloadJobs.filter((job) => job.status?.complete || job.status?.state.startsWith('error:') || job.error).length
-            setDownloadJobs((current) => current.filter((job) => !(job.status?.complete || job.status?.state.startsWith('error:') || job.error)))
-            if (count) toast.info('Cleared finished downloads', `${count} ${count === 1 ? 'item' : 'items'} removed`)
-          }}
+          onClearFinished={() => { void clearFinishedDownloads() }}
           onRemoveJob={setConfirmRemove}
           onPauseJob={pauseDownloadJob}
           onResumeJob={resumeDownloadJob}

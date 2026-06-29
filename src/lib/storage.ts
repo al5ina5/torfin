@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   downloadConfig: 'torfin.downloadConfig',
   activeDownloadJob: 'torfin.activeDownloadJob',
   downloadJobs: 'torfin.downloadJobs',
+  dismissedDownloadIds: 'torfin.dismissedDownloadIds',
   downloadSort: 'torfin.downloadSort',
   layout: 'torfin.layout',
   contentType: 'torfin.contentType',

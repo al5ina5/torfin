@@ -1,6 +1,7 @@
 import type { DownloadConfig, DownloadDestination, DownloadJob, DownloadPollConfig, DownloadSort, DownloadStatus, Movie, StreamResult } from '../types'
 import { destinationRootForMovie } from './download-destinations'
 import type { DestinationSecrets } from './download-destinations'
+import { STORAGE_KEYS, loadStoredJson, saveStoredJson } from './storage'
 
 export const defaultDownloadConfig: DownloadConfig = {
   jellyfinUrl: '',
@@ -80,6 +81,33 @@ export function downloadJobKey(job: DownloadJob) {
   return job.status?.id ?? job.pendingId ?? ''
 }
 
+export function downloadIdsForJob(job: DownloadJob) {
+  const ids = new Set<string>()
+  if (job.status?.id) ids.add(job.status.id)
+  if (job.pendingId) ids.add(job.pendingId)
+  return ids
+}
+
+export function isDownloadDismissed(job: DownloadJob, dismissed: ReadonlySet<string>) {
+  for (const id of downloadIdsForJob(job)) {
+    if (dismissed.has(id)) return true
+  }
+  return false
+}
+
+export function loadDismissedDownloadIds() {
+  return new Set(loadStoredJson<string[]>(STORAGE_KEYS.dismissedDownloadIds, []))
+}
+
+export function saveDismissedDownloadIds(ids: ReadonlySet<string>) {
+  saveStoredJson(STORAGE_KEYS.dismissedDownloadIds, [...ids])
+}
+
+export function markDownloadDismissed(ids: Set<string>, job: DownloadJob) {
+  for (const id of downloadIdsForJob(job)) ids.add(id)
+  saveDismissedDownloadIds(ids)
+}
+
 export function dedupeDownloadJobs(jobs: DownloadJob[]) {
   const seen = new Set<string>()
   return jobs.filter((job) => {
@@ -124,8 +152,8 @@ export function mergeServerDownloadJobs(
   const byId = new Map(statuses.filter((status) => !excludedIds.has(status.id)).map((status) => [status.id, status]))
   const merged = current
     .filter((job) => {
+      if (isDownloadDismissed(job, excludedIds)) return false
       const id = downloadJobKey(job)
-      if (id && excludedIds.has(id)) return false
       return !id || byId.has(id) || !job.status
     })
     .map((job) => {

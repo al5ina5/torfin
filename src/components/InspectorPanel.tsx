@@ -1,7 +1,7 @@
-import { ChevronLeft, Download, ExternalLink, Heart, Loader2 } from 'lucide-react'
+import { Download, ExternalLink, Heart, Loader2 } from 'lucide-react'
 
-import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
 import type { JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
+import { AppDrawer } from './AppDrawer'
 import { StreamResults } from './StreamResults'
 import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
 import { NativePlaybackBanner } from './NativePlaybackBanner'
@@ -399,7 +399,6 @@ function InspectorContent({
 
 export function InspectorPanel(props: InspectorPanelProps) {
   const { movie, mobileOpen = false, onMobileClose, ...contentProps } = props
-  const swipeDismiss = useSwipeDismiss(() => onMobileClose?.(), 'right')
 
   return (
     <>
@@ -416,40 +415,19 @@ export function InspectorPanel(props: InspectorPanelProps) {
         )}
       </aside>
 
-      {/* Mobile full-screen sheet */}
       {movie ? (
-        <>
-          <div
-            className={`app-inspector-backdrop lg:hidden ${mobileOpen ? 'is-open' : ''}`}
-            onClick={onMobileClose}
-            aria-hidden="true"
-          />
-          <div
-            className={`app-inspector-sheet mac-sidebar lg:hidden ${mobileOpen ? 'is-open' : ''}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label={movie.name}
-            {...swipeDismiss}
-          >
-            <header className="app-inspector-sheet-header">
-              <button
-                type="button"
-                onClick={onMobileClose}
-                className="app-mobile-menu-btn"
-                aria-label="Back to browse"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-semibold">{movie.name}</div>
-                <div className="truncate text-[11px] text-[var(--mac-secondary)]">{movie.releaseInfo}</div>
-              </div>
-            </header>
-            <div className="modal-scroll min-h-0 flex-1">
-              <InspectorContent movie={movie} {...contentProps} />
-            </div>
-          </div>
-        </>
+        <AppDrawer
+          open={mobileOpen}
+          title={movie.name}
+          subtitle={movie.releaseInfo}
+          onClose={() => onMobileClose?.()}
+          zClassName="z-[45]"
+          bodyClassName="p-0"
+          ariaLabel={movie.name}
+          titleId="app-inspector-title"
+        >
+          <InspectorContent movie={movie} {...contentProps} />
+        </AppDrawer>
       ) : null}
     </>
   )

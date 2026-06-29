@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv } from 'lucide-react'
 
-import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
 import { topGenres } from '../lib/genres'
 import { catalogOptions, isLibraryCatalog, libraryCatalogOptions } from '../lib/movies'
 import type { ContentType } from '../types'
+import { AppDrawer } from './AppDrawer'
 
 type DownloadSidebarSummary = {
   activeCount: number
@@ -15,7 +15,6 @@ type DownloadSidebarSummary = {
 type SidebarProps = {
   contentType: ContentType
   catalogId: string
-  activePluginCount: number
   watchlistCount: number
   continueCount: number
   recentCount: number
@@ -33,10 +32,9 @@ type SidebarProps = {
 
 const groups = ['Library', 'Now', 'Genres']
 
-export function Sidebar({
+function SidebarContent({
   contentType,
   catalogId,
-  activePluginCount,
   watchlistCount,
   continueCount,
   recentCount,
@@ -48,13 +46,11 @@ export function Sidebar({
   onOpenPreferences,
   onOpenDownloads,
   mobile = false,
-  open = false,
   onClose,
 }: SidebarProps) {
   const allOptions = [...libraryCatalogOptions, ...catalogOptions]
   const topGenreSet = new Set<string>(topGenres)
   const [genresExpanded, setGenresExpanded] = useState(false)
-  const swipeDismiss = useSwipeDismiss(() => onClose?.(), 'left')
 
   useEffect(() => {
     const selected = allOptions.find((option) => option.id === catalogId)
@@ -62,6 +58,7 @@ export function Sidebar({
       setGenresExpanded(true)
     }
   }, [catalogId])
+
   const { activeCount, topProgress, resolvingCount } = downloadSummary
   const progressPercent = Math.round(topProgress * 100)
   const showDownloadActivity = activeCount > 0 || resolvingCount > 0
@@ -71,38 +68,23 @@ export function Sidebar({
     if (mobile) onClose?.()
   }
 
-  const asideClass = mobile
-    ? `app-sidebar-drawer mac-sidebar flex min-h-0 flex-col ${open ? 'is-open' : ''}`
-    : 'app-sidebar-desktop mac-sidebar flex min-h-0 flex-col'
-
   return (
-    <aside
-      className={asideClass}
-      aria-hidden={mobile ? !open : undefined}
-      {...(mobile ? swipeDismiss : {})}
-    >
-      <div className="px-4 pb-3 pt-5">
-        <div className="flex items-center gap-2">
-          <div className="grid size-8 place-items-center rounded-lg bg-[var(--mac-accent)] text-[var(--mac-accent-text)] shadow-sm">
-            <Clapperboard size={18} />
+    <>
+      {!mobile ? (
+        <div className="px-4 pb-3 pt-5">
+          <div className="flex items-center gap-2">
+            <div className="grid size-8 place-items-center rounded-lg bg-[var(--mac-accent)] text-[var(--mac-accent-text)] shadow-sm">
+              <Clapperboard size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[13px] font-semibold leading-4 tracking-normal">Torfin</h1>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[13px] font-semibold leading-4 tracking-normal">Torfin</h1>
-            <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">{activePluginCount} plugins active</p>
-          </div>
-          {mobile ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] transition hover:bg-[var(--mac-control-hover)]"
-              aria-label="Close menu"
-            >
-              <X size={16} />
-            </button>
-          ) : null}
         </div>
+      ) : null}
 
-        <div className="mt-3 grid grid-cols-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
+      <div className={`px-4 ${mobile ? 'pb-2' : 'pb-3'}`}>
+        <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
           <button
             type="button"
             onClick={() => handleNavigate(() => onContentTypeChange('movie'))}
@@ -125,7 +107,7 @@ export function Sidebar({
             }`}
           >
             <Tv size={13} />
-            TV
+            Series
           </button>
         </div>
       </div>
@@ -195,7 +177,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="border-t border-[var(--mac-divider,var(--mac-border))] p-2">
+      <div className="shrink-0 border-t border-[var(--mac-divider,var(--mac-border))] p-2">
         <button
           type="button"
           onClick={() => handleNavigate(onOpenDownloads)}
@@ -241,6 +223,35 @@ export function Sidebar({
           <span className="truncate">Settings</span>
         </button>
       </div>
+    </>
+  )
+}
+
+export function Sidebar({
+  mobile = false,
+  open = false,
+  onClose,
+  ...props
+}: SidebarProps) {
+  if (mobile) {
+    return (
+      <AppDrawer
+        open={open}
+        title="Torfin"
+        icon={<Clapperboard size={15} />}
+        onClose={onClose ?? (() => {})}
+        zClassName="z-40"
+        bodyClassName="flex min-h-0 flex-col p-0"
+        titleId="app-sidebar-title"
+      >
+        <SidebarContent mobile onClose={onClose} {...props} />
+      </AppDrawer>
+    )
+  }
+
+  return (
+    <aside className="app-sidebar-desktop mac-sidebar flex min-h-0 flex-col">
+      <SidebarContent {...props} />
     </aside>
   )
 }

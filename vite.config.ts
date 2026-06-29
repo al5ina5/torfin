@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'

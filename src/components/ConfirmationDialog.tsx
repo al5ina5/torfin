@@ -41,7 +41,7 @@ export function ConfirmationDialog({
     return (
       <div className="fixed inset-0 z-[70] lg:hidden">
         <div
-          className={`app-modal-drawer-backdrop ${visible ? 'is-open' : ''}`}
+          className={`app-drawer-backdrop ${visible ? 'is-open' : ''}`}
           onClick={onCancel}
           aria-hidden="true"
         />
@@ -54,7 +54,7 @@ export function ConfirmationDialog({
           onClick={(event) => event.stopPropagation()}
           {...swipeDismiss}
         >
-          <div className="app-modal-drawer-grabber" aria-hidden="true" />
+          <div className="app-drawer-grabber" aria-hidden="true" />
           <div className="app-confirm-sheet-content mac-elevated">
             <h2 id="confirm-dialog-title" className="text-center text-[15px] font-semibold">
               {title}
