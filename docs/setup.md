@@ -5,7 +5,7 @@
 - A [Torbox](https://torbox.app) account and API key (for resolving torrent streams)
 - A Jellyfin server with a movies library folder
 - One of:
-  - **macOS desktop** — SSH downloads to a remote Jellyfin host, or local/qBittorrent downloads
+  - **Desktop** (macOS, Linux, or Windows) — SSH downloads to a remote Jellyfin host, or local/qBittorrent downloads
   - **Docker server** — web UI + server-side aria2 downloads into a folder Jellyfin watches
 
 ## Docker (full setup)
@@ -57,7 +57,7 @@ Open [http://localhost:3020](http://localhost:3020).
 ### 3. Configure the web app
 
 1. Open **Settings** (gear icon in the sidebar).
-2. **Plugins tab** — paste your Torbox API key. Enable Torrentio/Comet/etc. and use `{imdbId}` in stream URL templates.
+2. **Settings** — under **Accounts**, paste your Torbox API key. Under **Addons**, enable Torrentio/Comet/etc. and use `{imdbId}` in stream URL templates.
 3. **Downloads tab** — set Jellyfin URL and API key (same as server env if using Docker). Enable **Refresh Jellyfin on complete**.
 4. Browse a movie → pick a stream → click **Download**.
 
@@ -78,9 +78,17 @@ For local dev with auth:
 VITE_SERVER_API_KEY=your_key TORBOX_SERVER_API_KEY=your_key yarn dev
 ```
 
-## macOS desktop
+## Desktop
 
-[Download the latest release](https://github.com/al5ina5/torfin/releases/latest), open the `.dmg`, and drag Torfin to Applications.
+Download the build for your platform from [Releases](https://github.com/al5ina5/torfin/releases/latest):
+
+| Platform | File to grab |
+|----------|----------------|
+| macOS (Apple Silicon) | `*_aarch64.dmg` — open the `.dmg` and drag Torfin to Applications |
+| Linux | `*_amd64.AppImage` (portable) or `*_amd64.deb` (Debian/Ubuntu) |
+| Windows | `*_x64-setup.exe` or `*.msi` installer |
+
+Pushing a `v*` tag triggers CI to build all three and publish them on the same GitHub release.
 
 For development from source:
 
@@ -89,7 +97,7 @@ npm install
 npm run tauri:dev
 ```
 
-Requires [FFmpeg](https://ffmpeg.org/) for in-app playback:
+Requires [FFmpeg](https://ffmpeg.org/) for in-app playback on macOS:
 
 ```bash
 brew install ffmpeg

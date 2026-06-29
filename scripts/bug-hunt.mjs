@@ -26,37 +26,44 @@ async function main() {
     }
   }
 
-  await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 60000 })
+  await page.addInitScript(() => {
+    localStorage.setItem('torfin:first-run-dismissed', '1')
+    localStorage.setItem('torfin.legal-notice-accepted', '1')
+  })
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 })
 
   await step('load home', async () => {
     await page.locator('.app-shell').waitFor({ state: 'visible' })
   })
 
   await step('settings modal', async () => {
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Settings' }).click()
     await page.locator('.preferences-modal-panel').waitFor({ state: 'visible', timeout: 10000 })
     await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.app-modal-backdrop').waitFor({ state: 'hidden', timeout: 10000 })
   })
 
   await step('downloads modal', async () => {
-    await page.getByRole('button', { name: 'Open download queue' }).click()
+    await page.getByRole('link', { name: 'Open download queue' }).click()
     await page.getByText('Download', { exact: true }).first().waitFor()
     await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.app-modal-backdrop').waitFor({ state: 'hidden', timeout: 10000 })
   })
 
   await step('filters modal', async () => {
     await page.getByTitle('Filters').click()
     await page.getByText('Filters', { exact: true }).first().waitFor()
     await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.app-modal-backdrop').waitFor({ state: 'hidden', timeout: 10000 })
   })
 
   await step('series tab', async () => {
-    await page.getByRole('button', { name: 'Series' }).click()
+    await page.getByRole('link', { name: 'Series' }).click()
     await page.getByRole('heading', { name: /Trending|Top Rated/i }).first().waitFor()
   })
 
   await step('watchlist empty', async () => {
-    await page.getByRole('button', { name: 'Watchlist', exact: true }).click()
+    await page.getByRole('link', { name: 'Watchlist', exact: true }).click()
     await page.waitForTimeout(500)
   })
 
@@ -68,12 +75,10 @@ async function main() {
   })
 
   await step('open movie + streams', async () => {
-    await page.getByRole('button', { name: 'Movies' }).click()
-    await page.waitForFunction(() => {
-      const buttons = [...document.querySelectorAll('button')]
-      return buttons.some((b) => /\d{4}/.test(b.textContent || '') && b.querySelector('img'))
-    }, { timeout: 30000 })
-    await page.locator('button').filter({ has: page.locator('img') }).first().click()
+    await page.getByRole('link', { name: 'Movies' }).click()
+    await page.getByRole('link', { name: 'Trending', exact: true }).click()
+    await page.locator('.catalog-grid a img').first().waitFor({ state: 'visible', timeout: 60000 })
+    await page.locator('.catalog-grid a').filter({ has: page.locator('img') }).first().click()
     await page.getByText('Stream Results').first().waitFor({ timeout: 15000 })
     await page.waitForTimeout(2500)
   })

@@ -40,13 +40,14 @@ jobs:
       - name: UI tests
         run: |
           PORT=3026 node server.mjs &
-          echo $! > server.pid
-          for i in $(seq 1 45); do
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
             curl -sf http://127.0.0.1:3026/api/health && break
             sleep 1
           done
+          curl -sf http://127.0.0.1:3026/api/health
           UI_SMOKE_URL=http://127.0.0.1:3026/ npm run test:ui:all
-          kill "$(cat server.pid)" || true
 
       - name: Install Linux dependencies
         run: |
@@ -61,6 +62,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Rust format check
         run: cd src-tauri && cargo fmt --check

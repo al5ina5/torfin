@@ -16,6 +16,8 @@ export const STORAGE_KEYS = {
   searchHistory: 'torfin.search-history',
   filterPresets: 'torfin.filter-presets',
   lastCatalogId: 'torfin.last-catalog-id',
+  legalNoticeAccepted: 'torfin.legal-notice-accepted',
+  thirdPartyAddonAcks: 'torfin.third-party-addon-acks',
 } as const
 
 function hasLocalStorage() {

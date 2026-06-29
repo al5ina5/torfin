@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { CINEMETA_CATALOG_URLS, CINEMETA_SERIES_CATALOG_URLS, CURRENT_RELEASE_YEAR } from '../cinemeta'
+import { CINEMETA_CATALOG_URLS, CINEMETA_SERIES_CATALOG_URLS } from '../cinemeta'
 import { builtInFilterPresets } from '../filter-presets'
 import { catalogOptions, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies } from '../movies'
 import type { Movie } from '../../types'

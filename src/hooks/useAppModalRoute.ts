@@ -43,6 +43,7 @@ export function useAppModalRoute() {
 
   const openDownloads = useCallback(() => navigate((current) => withModal(current, { kind: 'downloads' })), [navigate])
   const openFilters = useCallback(() => navigate((current) => withModal(current, { kind: 'filters' })), [navigate])
+  const openLegal = useCallback(() => navigate((current) => withModal(current, { kind: 'legal' })), [navigate])
 
   const setSettingsTab = useCallback(
     (tab: PreferencesTab) => navigate((current) => withModal(current, { kind: 'settings', tab }), true),
@@ -88,6 +89,7 @@ export function useAppModalRoute() {
     openSettings,
     openDownloads,
     openFilters,
+    openLegal,
     setSettingsTab,
     navigateBrowse,
     navigatePreset,

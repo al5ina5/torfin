@@ -130,8 +130,8 @@ function shouldUseRepresentativeYearCatalog(filters: MovieFilters) {
   if (filters.sortBy === 'yearDesc') return false
   const from = filters.yearFrom ? Number(filters.yearFrom) : Number.NaN
   const to = filters.yearTo ? Number(filters.yearTo) : Number.NaN
-  const latestYear = Number.isFinite(to) ? to : (Number.isFinite(from) ? CURRENT_RELEASE_YEAR : Number.NaN)
-  return Number.isFinite(latestYear) && latestYear < 2010
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return false
+  return to - from <= 15
 }
 
 export function catalogUrlWithFilters(

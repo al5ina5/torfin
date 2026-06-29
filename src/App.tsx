@@ -12,6 +12,7 @@ import { FirstRunSetup } from './components/FirstRunSetup'
 import { InspectorPanel } from './components/InspectorPanel'
 import { JellyfinSignInModal } from './components/JellyfinSignInModal'
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
+import { LegalNoticeModal } from './components/LegalNoticeModal'
 import { MovieGrid } from './components/MovieGrid'
 import { MovieList } from './components/MovieList'
 import { PreferencesModal } from './components/PreferencesModal'
@@ -220,6 +221,7 @@ export default function App() {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
+  const [legalOpen, setLegalOpen] = useState(false)
   const [preferencesTab, setPreferencesTab] = useState<PreferencesTab>('general')
   const [jellyfinSignInOpen, setJellyfinSignInOpen] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<DownloadJob | null>(null)
@@ -240,6 +242,9 @@ export default function App() {
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [firstRunOpen, setFirstRunOpen] = useState(false)
+  const [firstRunLegalAccepted, setFirstRunLegalAccepted] = useState(
+    () => loadStoredString(STORAGE_KEYS.legalNoticeAccepted, '') === '1',
+  )
   const startupSyncedRef = useRef(false)
   const dismissedDownloadIdsRef = useRef(loadDismissedDownloadIds())
 
@@ -250,6 +255,7 @@ export default function App() {
     openSettings,
     openDownloads,
     openFilters,
+    openLegal,
     setSettingsTab,
     navigateBrowse,
     navigatePreset,
@@ -382,21 +388,31 @@ export default function App() {
         setPreferencesOpen(true)
         setDownloadsOpen(false)
         setFiltersOpen(false)
+        setLegalOpen(false)
         break
       case 'downloads':
         setDownloadsOpen(true)
         setPreferencesOpen(false)
         setFiltersOpen(false)
+        setLegalOpen(false)
         break
       case 'filters':
         setFiltersOpen(true)
         setPreferencesOpen(false)
         setDownloadsOpen(false)
+        setLegalOpen(false)
+        break
+      case 'legal':
+        setLegalOpen(true)
+        setPreferencesOpen(false)
+        setDownloadsOpen(false)
+        setFiltersOpen(false)
         break
       default:
         setPreferencesOpen(false)
         setDownloadsOpen(false)
         setFiltersOpen(false)
+        setLegalOpen(false)
         break
     }
   }, [route.modal])
@@ -1418,6 +1434,7 @@ export default function App() {
 
   function dismissFirstRun() {
     saveStoredString('torfin:first-run-dismissed', '1')
+    if (firstRunLegalAccepted) saveStoredString(STORAGE_KEYS.legalNoticeAccepted, '1')
     setFirstRunOpen(false)
   }
 
@@ -1577,6 +1594,7 @@ export default function App() {
         filtersOpen ||
         downloadsOpen ||
         preferencesOpen ||
+        legalOpen ||
         jellyfinSignInOpen ||
         confirmRemove ||
         shortcutsOpen
@@ -1671,11 +1689,13 @@ export default function App() {
             recentCount={recentViews.length}
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
+            legalOpen={legalOpen}
             downloadSummary={downloadSummary}
             onContentTypeChange={handleContentTypeChange}
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
+            onOpenLegal={openLegal}
             customFilterPresets={customFilterPresets}
             activePresetId={route.presetId}
             movieFilters={movieFilters}
@@ -1696,11 +1716,13 @@ export default function App() {
             recentCount={recentViews.length}
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
+            legalOpen={legalOpen}
             downloadSummary={downloadSummary}
             onContentTypeChange={handleContentTypeChange}
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
+            onOpenLegal={openLegal}
             customFilterPresets={customFilterPresets}
             activePresetId={route.presetId}
             movieFilters={movieFilters}
@@ -2047,26 +2069,29 @@ export default function App() {
           }}
         />
         <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        <LegalNoticeModal open={legalOpen} onClose={closeModal} />
         <FirstRunSetup
           open={firstRunOpen}
           torboxApiKey={torboxApiKey}
+          legalAccepted={firstRunLegalAccepted}
           onChangeTorboxApiKey={setTorboxApiKey}
+          onChangeLegalAccepted={setFirstRunLegalAccepted}
           onOpenSettings={() => {
             dismissFirstRun()
-            openSettings('plugins')
+            openSettings('accounts')
           }}
           onDismiss={dismissFirstRun}
         />
       <ConfirmationDialog
         open={torboxKeyPromptOpen}
         title="Torbox API key required"
-        message="Playing and downloading need a Torbox API key to resolve streams. Add your key in Settings → Plugins to continue."
+        message="Playing and downloading need a Torbox API key to resolve streams. Add your key in Settings → Accounts to continue."
         confirmLabel="Open Settings"
         confirmTone="primary"
         onCancel={() => setTorboxKeyPromptOpen(false)}
         onConfirm={() => {
           setTorboxKeyPromptOpen(false)
-          openSettings('plugins')
+          openSettings('accounts')
         }}
       />
       <ConfirmationDialog

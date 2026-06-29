@@ -47,8 +47,12 @@ async function runWithPlaywright(url) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 })
-    await page.waitForTimeout(1500)
+    await page.addInitScript(() => {
+      localStorage.setItem('torfin:first-run-dismissed', '1')
+      localStorage.setItem('torfin.legal-notice-accepted', '1')
+    })
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+    await page.waitForTimeout(2000)
 
     // Shell layout
     await page.locator('.app-shell').waitFor({ state: 'visible', timeout: 15000 })
@@ -57,34 +61,39 @@ async function runWithPlaywright(url) {
     await page.getByLabel('Resize movie details sidebar').waitFor({ state: 'visible' })
 
     // Sidebar: Settings/Downloads at bottom (not center toolbar)
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Settings' }).click()
     await page.locator('.preferences-modal-panel').waitFor({ state: 'visible', timeout: 10000 })
     await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.preferences-modal-panel').waitFor({ state: 'hidden', timeout: 10000 })
 
-    // Series tab
-    await page.getByRole('button', { name: 'Series' }).click()
+    // Downloads modal from sidebar (before opening a title, so no overlay blocks the sidebar)
+    await page.getByRole('link', { name: 'Open download queue' }).click()
+    await page.getByText('Download', { exact: true }).first().waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.app-modal-backdrop').waitFor({ state: 'hidden', timeout: 10000 })
+
+    // Series tab (sidebar uses routed links, not buttons)
+    await page.getByRole('link', { name: 'Series' }).click()
     await page.getByRole('heading', { name: /Trending|Top Rated/i }).first().waitFor({ timeout: 15000 })
 
     // Filters modal
     await page.getByTitle('Filters').click()
     await page.getByText('Filters', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 })
     await page.getByRole('button', { name: 'Close' }).first().click()
+    await page.locator('.app-modal-backdrop').waitFor({ state: 'hidden', timeout: 10000 })
 
     // Back to movies for catalog flow
-    await page.getByRole('button', { name: 'Movies' }).click()
+    await page.getByRole('link', { name: 'Movies' }).click()
     await page.getByPlaceholder('Search').waitFor({ state: 'visible' })
     await page.getByTitle('Filters').waitFor({ state: 'visible' })
 
-    // Wait for poster grid
-    await page.waitForFunction(() => {
-      const buttons = [...document.querySelectorAll('button')]
-      return buttons.some((button) => /\d{4}/.test(button.textContent || '') && button.querySelector('img'))
-    }, { timeout: 30000 })
+    // Wait for poster grid (catalog tiles are routed links)
+    await page.locator('.catalog-grid a img').first().waitFor({ state: 'visible', timeout: 60000 })
 
     // Select first movie with a poster
-    const movieButton = page.locator('button').filter({ has: page.locator('img') }).first()
-    const movieName = (await movieButton.textContent())?.split(/\d{4}/)[0]?.trim() || 'movie'
-    await movieButton.click()
+    const movieLink = page.locator('.catalog-grid a').filter({ has: page.locator('img') }).first()
+    const movieName = (await movieLink.textContent())?.split(/\d{4}/)[0]?.trim() || 'movie'
+    await movieLink.click()
 
     // Inspector panel
     await page.getByText('Stream Results').first().waitFor({ state: 'visible', timeout: 15000 })
@@ -98,11 +107,6 @@ async function runWithPlaywright(url) {
     if ((await playButtons.count()) > 0) {
       await playButtons.first().waitFor({ state: 'visible' })
     }
-
-    // Downloads modal from sidebar
-    await page.getByRole('button', { name: 'Open download queue' }).click()
-    await page.getByText('Download', { exact: true }).first().waitFor({ state: 'visible' })
-    await page.getByRole('button', { name: 'Close' }).first().click()
 
     console.log(`UX flow passed for "${movieName}" at ${url}`)
   } finally {

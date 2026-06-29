@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Pause, Settings2, SlidersHorizontal, TriangleAlert, Tv } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Pause, Scale, Settings2, SlidersHorizontal, TriangleAlert, Tv } from 'lucide-react'
 
 import { appRouteToUrl, browseRoute, presetRoute, withModal } from '../lib/app-routes'
 import { builtInFilterPresets, FEATURED_PRESET_COUNT, pickFeaturedPresets, presetRouteSlug } from '../lib/filter-presets'
@@ -19,11 +19,13 @@ type SidebarProps = {
   recentCount: number
   preferencesOpen: boolean
   downloadsOpen: boolean
+  legalOpen: boolean
   downloadSummary: DownloadSidebarSummary
   onContentTypeChange: (type: ContentType) => void
   onCatalogChange: (id: string) => void
   onOpenPreferences: () => void
   onOpenDownloads: () => void
+  onOpenLegal: () => void
   customFilterPresets: FilterPreset[]
   activePresetId?: string
   movieFilters: MovieFilters
@@ -67,11 +69,13 @@ function SidebarContent({
   recentCount,
   preferencesOpen,
   downloadsOpen,
+  legalOpen,
   downloadSummary,
   onContentTypeChange,
   onCatalogChange,
   onOpenPreferences,
   onOpenDownloads,
+  onOpenLegal,
   customFilterPresets,
   activePresetId,
   movieFilters,
@@ -302,6 +306,16 @@ function SidebarContent({
         >
           <Settings2 size={15} />
           <span className="truncate">Settings</span>
+        </AppLink>
+        <AppLink
+          href={appRouteToUrl(withModal(browseRoute(contentType, catalogId), { kind: 'legal' }))}
+          onNavigate={() => handleNavigate(onOpenLegal)}
+          className={`mt-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
+            legalOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'
+          }`}
+        >
+          <Scale size={15} />
+          <span className="truncate">Legal</span>
         </AppLink>
       </div>
     </FocusZone>

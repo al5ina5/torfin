@@ -10,8 +10,8 @@
 <h1 align="center">Torfin</h1>
 
 <p align="center">
-  <strong>Browse streams. Download to Jellyfin. Done.</strong><br>
-  Stremio-compatible addons, Torbox resolution, and one-click library imports.
+  <strong>Your Jellyfin library. Your services.</strong><br>
+  Browse catalogs, connect your own debrid account and Stremio-compatible addons, and import downloads into Jellyfin.
 </p>
 
 <p align="center">
@@ -32,15 +32,19 @@
 
 ## Install
 
-### macOS
+### Desktop
 
-**Download, open, run.**
+Download the build for your platform from [Releases](https://github.com/al5ina5/torfin/releases/latest):
 
-1. Grab the latest `.dmg` from [Releases](https://github.com/al5ina5/torfin/releases/latest)
-2. Drag **Torfin** to Applications
-3. Launch it
+| Platform | File to grab |
+|----------|----------------|
+| [macOS](https://github.com/al5ina5/torfin/releases/latest) (Apple Silicon) | `*_aarch64.dmg` |
+| [Linux](https://github.com/al5ina5/torfin/releases/latest) | `*_amd64.AppImage` or `*_amd64.deb` |
+| [Windows](https://github.com/al5ina5/torfin/releases/latest) | `*_x64-setup.exe` or `*.msi` |
 
-That's it. Paste your Torbox key on first launch, then open **Settings** to wire up plugins and Jellyfin.
+Open the app, paste your Torbox key on first launch, then open **Settings** to wire up plugins and Jellyfin.
+
+New tags (`v*`) automatically build all three platforms and attach them to the GitHub release.
 
 ---
 
@@ -59,5 +63,5 @@ Mount your real movies folder by swapping `torfin-movies` for a host path, e.g. 
 ---
 
 <p align="center">
-  <sub>MIT · built for Torbox + Jellyfin homelabs</sub>
+  <sub>MIT · homelab client for Jellyfin · <a href="docs/legal.md">Legal notice</a></sub>
 </p>

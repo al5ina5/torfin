@@ -14,6 +14,19 @@ import {
 } from '../app-routes'
 
 describe('parseAppRoute', () => {
+  it('parses legal routes', () => {
+    expect(parseAppRoute('/legal')).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      modal: { kind: 'legal' },
+    })
+    expect(parseAppRoute('/', '?legal')).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      modal: { kind: 'legal' },
+    })
+  })
+
   it('parses settings paths and query tabs', () => {
     expect(parseAppRoute('/settings')).toEqual({
       contentType: 'movie',
@@ -24,6 +37,11 @@ describe('parseAppRoute', () => {
       contentType: 'movie',
       catalogId: 'trending',
       modal: { kind: 'settings', tab: 'plugins' },
+    })
+    expect(parseAppRoute('/settings/accounts')).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      modal: { kind: 'settings', tab: 'accounts' },
     })
     expect(parseAppRoute('/settings', '?tab=playback')).toEqual({
       contentType: 'movie',
@@ -117,6 +135,8 @@ describe('appRouteToUrl', () => {
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'filters' as const } },
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'general' as const } },
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'plugins' as const } },
+      { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'accounts' as const } },
+      { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'legal' as const } },
     ]
     for (const route of routes) {
       expect(parseAppRoute(appRouteToUrl(route))).toEqual(route)

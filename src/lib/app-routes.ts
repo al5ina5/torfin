@@ -5,6 +5,7 @@ export type AppRouteModal =
   | { kind: 'settings'; tab: PreferencesTab }
   | { kind: 'downloads' }
   | { kind: 'filters' }
+  | { kind: 'legal' }
 
 export type AppRouteTitle = {
   type: ContentType
@@ -25,7 +26,7 @@ export type AppRoute = {
 /** @deprecated Use AppRoute instead */
 export type AppModalRoute = AppRoute
 
-const SETTINGS_TABS: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
+const SETTINGS_TABS: PreferencesTab[] = ['general', 'playback', 'downloads', 'accounts', 'plugins', 'advanced']
 
 const CATALOG_IDS = new Set<string>([
   ...libraryCatalogOptions.map((option) => option.id),
@@ -51,6 +52,7 @@ export function defaultAppRoute(contentType: ContentType = 'movie'): AppRoute {
 function parseModalRoute(normalized: string, params: URLSearchParams, fallback: AppRoute): AppRoute | null {
   if (normalized === '/downloads') return { ...fallback, modal: { kind: 'downloads' } }
   if (normalized === '/filters') return { ...fallback, modal: { kind: 'filters' } }
+  if (normalized === '/legal') return { ...fallback, modal: { kind: 'legal' } }
 
   if (normalized === '/settings' || normalized.startsWith('/settings/')) {
     const segment = normalized.split('/')[2]
@@ -76,6 +78,7 @@ function parseModalRoute(normalized: string, params: URLSearchParams, fallback: 
 
   if (params.has('downloads')) return { ...fallback, modal: { kind: 'downloads' } }
   if (params.has('filters')) return { ...fallback, modal: { kind: 'filters' } }
+  if (params.has('legal')) return { ...fallback, modal: { kind: 'legal' } }
 
   return null
 }
@@ -150,6 +153,8 @@ export function appRouteToUrl(route: AppRoute): string {
         return '/downloads'
       case 'filters':
         return '/filters'
+      case 'legal':
+        return '/legal'
       case 'settings':
         return route.modal.tab === 'general' ? '/settings' : `/settings/${route.modal.tab}`
     }
@@ -208,7 +213,7 @@ function normalizeAppRoute(value: unknown): AppRoute | null {
     const modal = route.modal as AppRouteModal
     if (modal.kind === 'settings' && isPreferencesTab(modal.tab)) {
       next.modal = { kind: 'settings', tab: modal.tab }
-    } else if (modal.kind === 'downloads' || modal.kind === 'filters') {
+    } else if (modal.kind === 'downloads' || modal.kind === 'filters' || modal.kind === 'legal') {
       next.modal = modal
     }
   }

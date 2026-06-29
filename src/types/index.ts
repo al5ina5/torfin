@@ -5,7 +5,7 @@ export type MovieSort = 'catalog' | 'ratingDesc' | 'yearDesc' | 'yearAsc' | 'tit
 export type BuiltinResultProfile = 'netflix' | 'dataSaver' | 'cinephile'
 export type ResultProfile = BuiltinResultProfile | (string & {})
 export type DownloadSort = 'newest' | 'oldest' | 'active' | 'finishedLast'
-export type PreferencesTab = 'general' | 'playback' | 'downloads' | 'plugins' | 'advanced'
+export type PreferencesTab = 'general' | 'playback' | 'downloads' | 'accounts' | 'plugins' | 'advanced'
 
 export type LibraryCatalogId = 'watchlist' | 'continue' | 'recent'
 

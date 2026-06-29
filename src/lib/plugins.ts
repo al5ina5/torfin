@@ -9,7 +9,7 @@ export const defaultPlugins: PluginConfig[] = [
   {
     id: 'torrentio',
     name: 'Torrentio',
-    enabled: true,
+    enabled: false,
     streamUrlTemplate: 'https://torrentio.strem.fun/stream/movie/{imdbId}.json',
   },
 ]

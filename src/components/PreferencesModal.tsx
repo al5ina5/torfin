@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react'
 import { defaultCustomProfile } from '../lib/custom-profiles'
 import { isMacTauri, listNativePlayers, type NativePlayerOption } from '../lib/native-player'
 import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
+import {
+  DEBRID_SERVICE_HINT,
+  THIRD_PARTY_ADDON_ENABLE_TITLE,
+  THIRD_PARTY_STREAM_SOURCES_HINT,
+  thirdPartyAddonEnableMessage,
+} from '../lib/legal-notice'
+import { hasThirdPartyAddonAck, markThirdPartyAddonAck } from '../lib/third-party-addon-ack'
 import type {
   AppPreferences,
   CustomStreamProfile,
@@ -29,6 +36,7 @@ import {
 } from './SettingsSection'
 import { SecretInput } from './SecretInput'
 import { TorboxAccountPanel } from './TorboxAccountPanel'
+import { ConfirmationDialog } from './ConfirmationDialog'
 
 type PreferencesModalProps = {
   open: boolean
@@ -66,12 +74,13 @@ const macNativePlayerFallback: NativePlayerOption[] = [
 const preferenceTabLabels: Record<PreferencesTab, string> = {
   general: 'General',
   playback: 'Playback',
-  downloads: 'Download settings',
-  plugins: 'Plugins',
+  downloads: 'Downloads',
+  accounts: 'Accounts',
+  plugins: 'Addons',
   advanced: 'Advanced',
 }
 
-const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
+const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'accounts', 'plugins', 'advanced']
 
 const startupCatalogOptions: Array<{ id: StartupCatalogId; label: string }> = [
   { id: 'lastUsed', label: 'Last used' },
@@ -106,6 +115,7 @@ export function PreferencesModal({
   onResetPanelSizes,
 }: PreferencesModalProps) {
   const [nativePlayers, setNativePlayers] = useState<NativePlayerOption[]>([])
+  const [pendingPluginEnable, setPendingPluginEnable] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     if (!open || tab !== 'playback' || !isMacTauri()) return
@@ -114,14 +124,34 @@ export function PreferencesModal({
       .catch(() => setNativePlayers([]))
   }, [open, tab])
 
+  function handlePluginEnabledChange(plugin: PluginConfig, enabled: boolean) {
+    if (!enabled) {
+      onUpdatePlugin(plugin.id, { enabled: false })
+      return
+    }
+    if (hasThirdPartyAddonAck(plugin.id)) {
+      onUpdatePlugin(plugin.id, { enabled: true })
+      return
+    }
+    setPendingPluginEnable({ id: plugin.id, name: plugin.name })
+  }
+
+  function confirmPendingPluginEnable() {
+    if (!pendingPluginEnable) return
+    markThirdPartyAddonAck(pendingPluginEnable.id)
+    onUpdatePlugin(pendingPluginEnable.id, { enabled: true })
+    setPendingPluginEnable(null)
+  }
+
   return (
+    <>
     <AppModal
       open={open}
       title="Preferences"
       onClose={onClose}
       className="preferences-modal-panel"
       headerEnd={
-        <div className="grid w-full grid-cols-5 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
+        <div className="flex w-full gap-0.5 overflow-x-auto rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
           {preferenceTabs.map((entry) => (
             <button
               key={entry}
@@ -129,7 +159,7 @@ export function PreferencesModal({
               onClick={() => onTabChange(entry)}
               aria-label={preferenceTabLabels[entry]}
               aria-current={tab === entry ? 'page' : undefined}
-              className={`h-7 min-w-0 rounded-md px-2 text-[11px] font-semibold transition ${
+              className={`h-7 shrink-0 rounded-md px-2.5 text-[11px] font-semibold transition ${
                 tab === entry
                   ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
                   : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control-hover)]'
@@ -455,9 +485,10 @@ export function PreferencesModal({
         </div>
       ) : null}
 
-      {tab === 'plugins' ? (
+      {tab === 'accounts' ? (
         <div className="space-y-0">
-          <SettingsSection title="Torbox Account" first>
+          <SettingsSection title="Debrid service (third party)" first>
+            <SettingsHint>{DEBRID_SERVICE_HINT}</SettingsHint>
             <TorboxAccountPanel apiKey={torboxApiKey} />
             <label className="block">
               <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[var(--mac-secondary)]">
@@ -467,8 +498,12 @@ export function PreferencesModal({
               <SecretInput value={torboxApiKey} onChange={onChangeTorboxApiKey} />
             </label>
           </SettingsSection>
+        </div>
+      ) : null}
 
-          <SettingsSection title="Network">
+      {tab === 'plugins' ? (
+        <div className="space-y-0">
+          <SettingsSection title="Network" first>
             <SettingsField
               label="Addon request timeout"
               hint="How long to wait for stream addon responses in the web app before showing an error."
@@ -486,7 +521,8 @@ export function PreferencesModal({
             </SettingsField>
           </SettingsSection>
 
-          <SettingsSection title="Stream Sources">
+          <SettingsSection title="Stream addons (third party)">
+            <SettingsHint>{THIRD_PARTY_STREAM_SOURCES_HINT}</SettingsHint>
             <div className="space-y-3">
               {plugins.map((plugin) => (
                 <div key={plugin.id} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
@@ -494,7 +530,7 @@ export function PreferencesModal({
                     <label className="flex items-center gap-2 text-[13px] font-semibold">
                       <input
                         checked={plugin.enabled}
-                        onChange={(event) => onUpdatePlugin(plugin.id, { enabled: event.target.checked })}
+                        onChange={(event) => handlePluginEnabledChange(plugin, event.target.checked)}
                         type="checkbox"
                         className="size-4 accent-[var(--mac-accent)]"
                       />
@@ -612,6 +648,16 @@ export function PreferencesModal({
         </div>
       ) : null}
     </AppModal>
+    <ConfirmationDialog
+      open={Boolean(pendingPluginEnable)}
+      title={THIRD_PARTY_ADDON_ENABLE_TITLE}
+      message={pendingPluginEnable ? thirdPartyAddonEnableMessage(pendingPluginEnable.name) : ''}
+      confirmLabel="Enable addon"
+      confirmTone="primary"
+      onConfirm={confirmPendingPluginEnable}
+      onCancel={() => setPendingPluginEnable(null)}
+    />
+    </>
   )
 }
 
