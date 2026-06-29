@@ -43,7 +43,7 @@ function syncSafeAreaInsets() {
     document.documentElement.style.removeProperty('--app-safe-top')
     document.documentElement.style.removeProperty('--app-safe-right')
     document.documentElement.style.removeProperty('--app-safe-left')
-    document.documentElement.style.removeProperty('--app-home-indicator')
+    document.documentElement.style.removeProperty('--app-home-indicator-inset')
     return
   }
 
@@ -52,7 +52,8 @@ function syncSafeAreaInsets() {
   root.setProperty('--app-safe-top', `${top}px`)
   root.setProperty('--app-safe-right', `${right}px`)
   root.setProperty('--app-safe-left', `${left}px`)
-  root.setProperty('--app-home-indicator', `${bottom}px`)
+  // Measured inset; CSS adds --app-home-indicator-boost on mobile.
+  root.setProperty('--app-home-indicator-inset', `${Math.max(bottom, 20)}px`)
 }
 
 function syncViewportHeight() {

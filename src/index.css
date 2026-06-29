@@ -10,9 +10,18 @@
   --app-safe-bottom: env(safe-area-inset-bottom, 0px);
   --app-safe-left: constant(safe-area-inset-left, 0px);
   --app-safe-left: env(safe-area-inset-left, 0px);
-  /* Real home-indicator inset for tappable content — never zeroed like --app-safe-bottom. */
-  --app-home-indicator: constant(safe-area-inset-bottom, 0px);
-  --app-home-indicator: env(safe-area-inset-bottom, 0px);
+  /* Raw inset from the device; --app-home-indicator adds mobile boost below. */
+  --app-home-indicator-inset: constant(safe-area-inset-bottom, 0px);
+  --app-home-indicator-inset: env(safe-area-inset-bottom, 0px);
+  --app-home-indicator-boost: 0px;
+  --app-home-indicator: calc(var(--app-home-indicator-inset) + var(--app-home-indicator-boost));
+  --app-screen-inset: 0.75rem;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-screen-inset: 3rem;
+  }
 }
 
 @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
@@ -23,6 +32,7 @@
 
 @media (max-width: 1023px) {
   :root {
+    --app-home-indicator-boost: 16px;
     --app-safe-bottom: 0px;
   }
 }
@@ -160,11 +170,24 @@ body.modal-open {
   overflow: hidden;
 }
 
+.app-modal-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.app-modal-subheader {
+  padding: 8px 16px 10px;
+  border-top: 1px solid var(--mac-divider, var(--mac-border));
+}
+
 /* iOS-style bottom drawer (mobile) */
 .app-drawer-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.45);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   opacity: 0;
@@ -216,13 +239,13 @@ body.modal-open {
   flex-shrink: 0;
   align-items: center;
   min-height: 44px;
-  padding: 0 12px 8px;
+  padding: 0 var(--app-screen-inset) 8px;
   border-bottom: 1px solid var(--mac-divider, var(--mac-border));
 }
 
 .app-drawer-close {
   position: absolute;
-  right: 12px;
+  right: var(--app-screen-inset);
   top: 50%;
   display: grid;
   place-items: center;
@@ -243,7 +266,7 @@ body.modal-open {
 .app-drawer-subheader {
   overflow-x: auto;
   border-bottom: 1px solid var(--mac-divider, var(--mac-border));
-  padding: 8px 12px;
+  padding: 8px var(--app-screen-inset);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -288,7 +311,7 @@ body.modal-open {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 8px calc(8px + var(--app-home-indicator, 0px));
+  padding: 0 var(--app-screen-inset) calc(var(--app-screen-inset) + var(--app-home-indicator, 0px));
   transform: translateY(105%);
   transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
   will-change: transform;
@@ -304,7 +327,7 @@ body.modal-open {
   overflow: hidden;
   border-radius: 14px;
   border: 1px solid var(--mac-border);
-  padding: 16px 14px;
+  padding: var(--app-screen-inset);
 }
 
 .app-confirm-sheet-actions {
@@ -369,6 +392,14 @@ body.modal-open {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+.app-screen-body {
+  padding: var(--app-screen-inset);
+}
+
+.app-screen-inset-x {
+  padding-inline: var(--app-screen-inset);
 }
 
 .mac-vibrant {
@@ -485,6 +516,21 @@ html[data-theme="dark"] .mac-elevated {
   user-select: none !important;
 }
 
+.app-movie-scroll {
+  padding-inline: 1.25rem;
+  padding-top: 1.25rem;
+}
+
+.app-movie-scroll.app-touch-bottom-scroll-padded {
+  padding-bottom: calc(1.25rem + var(--app-home-indicator));
+}
+
+.app-movie-scroll.app-touch-bottom-scroll-padded-sm {
+  padding-inline: 0.75rem;
+  padding-top: 0.75rem;
+  padding-bottom: calc(0.75rem + var(--app-home-indicator));
+}
+
 /* ── Mobile layout (< 1024px) ───────────────────────────────────────────── */
 
 @media (max-width: 1023px) {
@@ -500,10 +546,21 @@ html[data-theme="dark"] .mac-elevated {
     display: none;
   }
 
-  /* Extend toolbar background into the body safe-area inset (standalone / notch). */
+  /* Paint toolbar color into the body safe-area band without shifting flex layout. */
   .app-mobile-toolbar {
-    margin-top: calc(-1 * var(--app-safe-top));
-    padding-top: var(--app-safe-top);
+    position: relative;
+    z-index: 2;
+  }
+
+  .app-mobile-toolbar::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(-1 * var(--app-safe-top));
+    height: var(--app-safe-top);
+    background: var(--mac-toolbar);
+    pointer-events: none;
   }
 }
 
@@ -1182,7 +1239,19 @@ html[data-theme="dark"] .mac-elevated {
   --width: min(360px, calc(100vw - 32px));
   --border-radius: 16px;
   font-family: inherit;
-  bottom: calc(20px + var(--app-home-indicator)) !important;
+}
+
+@media (max-width: 1023px) {
+  [data-sonner-toaster][data-y-position='top'] {
+    top: calc(12px + var(--app-safe-top, 0px)) !important;
+    bottom: auto !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-sonner-toaster][data-y-position='bottom'] {
+    bottom: 20px !important;
+  }
 }
 
 /* Override Sonner's injected light/dark theme tokens with app mac variables */

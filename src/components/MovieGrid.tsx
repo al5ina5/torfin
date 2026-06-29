@@ -56,7 +56,7 @@ export function MovieGrid({
   return (
     <div
       ref={scrollRef}
-      className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 app-touch-bottom-scroll-padded${showEmpty ? ' flex flex-col' : ''}`}
+      className={`app-movie-scroll min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded${showEmpty ? ' flex flex-col' : ''}`}
     >
       {loading ? (
         <MovieGridSkeleton posterSize={posterSize} />
@@ -127,7 +127,7 @@ export function MovieGrid({
                     className={`absolute right-2 top-2 grid size-7 place-items-center rounded-full border border-black/20 bg-black/55 text-white transition-[opacity,transform,background] duration-150 hover:scale-105 hover:bg-black/75 active:scale-95 ${
                       inWatchlist ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                     }`}
-                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                    aria-label={inWatchlist ? `Remove ${movie.name} from watchlist` : `Add ${movie.name} to watchlist`}
                   >
                     <Heart size={13} fill={inWatchlist ? 'currentColor' : 'none'} />
                   </button>

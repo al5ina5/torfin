@@ -140,7 +140,7 @@ function InspectorContent({
           />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--mac-sidebar)] via-[var(--mac-sidebar)]/75 to-transparent" />
-        <div className="relative flex h-full items-end gap-3 p-4">
+        <div className="relative flex h-full items-end gap-3 app-screen-body">
           {movie.poster ? (
             <img
               src={movie.poster}
@@ -155,7 +155,7 @@ function InspectorContent({
                 type="button"
                 onClick={onToggleWatchlist}
                 className="grid size-9 shrink-0 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] sm:size-8"
-                title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                aria-label={inWatchlist ? `Remove ${movie.name} from watchlist` : `Add ${movie.name} to watchlist`}
               >
                 <Heart size={15} fill={inWatchlist ? 'currentColor' : 'none'} />
               </button>
@@ -197,7 +197,7 @@ function InspectorContent({
         </div>
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="app-screen-body space-y-4">
         {movie.description ? (
           <p className="line-clamp-6 text-[13px] leading-5 text-[var(--mac-secondary)] sm:line-clamp-4">{movie.description}</p>
         ) : null}

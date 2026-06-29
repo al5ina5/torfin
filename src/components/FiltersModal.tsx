@@ -28,7 +28,7 @@ export function FiltersModal({
       icon={<SlidersHorizontal size={15} />}
       onClose={onClose}
       className="w-[min(620px,calc(100vw-32px))]"
-      bodyClassName="modal-scroll space-y-4 p-4"
+      bodyClassName="modal-scroll app-screen-body space-y-4"
     >
       <div>
         <button

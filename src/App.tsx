@@ -56,6 +56,7 @@ import {
   markDownloadDismissed,
   mergeServerDownloadJobs,
   qbittorrentPayload,
+  serverDownloadJellyfinPayload,
   withDownloadTimestamp,
 } from './lib/downloads'
 import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
@@ -820,7 +821,11 @@ export default function App() {
             }
             return invoke('start_local_url_download', { config: pollConfig.local, request })
           })
-        : await postApi('/api/downloads', { ...request, ...localPayload(legacy, movie) })
+        : await postApi('/api/downloads', {
+            ...request,
+            ...localPayload(legacy, movie),
+            ...serverDownloadJellyfinPayload(legacy, jellyfinKey),
+          })
       setDownloadJobs((current) => [
         {
           pendingId: id,

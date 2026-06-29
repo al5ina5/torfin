@@ -34,7 +34,7 @@ export function DownloadDestinationPicker({
       icon={<FolderDown size={15} />}
       onClose={onClose}
       className="max-h-[80vh] w-full max-w-md"
-      bodyClassName="space-y-3 p-4"
+      bodyClassName="app-screen-body space-y-3"
       zClassName="z-[55]"
     >
       <div>

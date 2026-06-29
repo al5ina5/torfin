@@ -81,7 +81,7 @@ export function ConfirmationDialog({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center bg-black/25 p-4 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-black/35 p-4 backdrop-blur-sm" onClick={onCancel}>
       <section
         role="alertdialog"
         aria-modal="true"
@@ -90,12 +90,12 @@ export function ConfirmationDialog({
         className="mac-elevated w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-xl border"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-[var(--mac-border)] px-4 py-3">
+        <div className="app-screen-inset-x border-b border-[var(--mac-border)] py-3">
           <h2 id="confirm-dialog-title" className="text-[14px] font-semibold">
             {title}
           </h2>
         </div>
-        <div className="space-y-4 p-4">
+        <div className="app-screen-body space-y-4">
           <p id="confirm-dialog-message" className="text-[12px] leading-5 text-[var(--mac-secondary)]">
             {message}
           </p>

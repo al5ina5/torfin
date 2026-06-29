@@ -254,6 +254,15 @@ export function localPayload(config: DownloadConfig, movie?: Movie) {
   }
 }
 
+export function serverDownloadJellyfinPayload(config: DownloadConfig, jellyfinApiKey: string) {
+  const enabled = config.refreshJellyfinOnComplete && config.jellyfinUrl.trim() && jellyfinApiKey.trim()
+  return {
+    refreshJellyfinOnComplete: enabled,
+    jellyfinUrl: enabled ? config.jellyfinUrl.trim() : '',
+    jellyfinApiKey: enabled ? jellyfinApiKey.trim() : '',
+  }
+}
+
 export function makeDownloadFilename(movie: Movie, stream: StreamResult, episode?: { season: number; episode: number }) {
   const quality = stream.tags.find((tag) => /^\d/.test(tag)) ?? ''
   const episodeTag = episode ? ` S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}` : ''

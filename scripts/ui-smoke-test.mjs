@@ -100,7 +100,7 @@ async function runWithPlaywright(url) {
     }
 
     // Downloads modal from sidebar
-    await page.getByRole('button', { name: 'Downloads' }).click()
+    await page.getByRole('button', { name: 'Open download queue' }).click()
     await page.getByText('Download', { exact: true }).first().waitFor({ state: 'visible' })
     await page.getByRole('button', { name: 'Close' }).first().click()
 

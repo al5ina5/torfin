@@ -50,10 +50,10 @@ export function DownloadsModal({
       icon={<HardDriveDownload size={15} />}
       onClose={onClose}
       className="download-modal-panel"
-      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden gap-2 p-3"
+      bodyClassName="app-screen-body flex min-h-0 flex-1 flex-col overflow-hidden gap-2"
       zClassName="z-40"
     >
-      <div className="flex shrink-0 items-center justify-between gap-3 px-1 text-[11px] text-[var(--mac-secondary)]">
+      <div className="flex shrink-0 items-center justify-between gap-3 text-[11px] text-[var(--mac-secondary)]">
         <span>
           {jobs.length} {jobs.length === 1 ? 'item' : 'items'}
         </span>
@@ -103,7 +103,7 @@ export function DownloadsModal({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {sortedJobs.length ? (
           <div className="space-y-2">
             {sortedJobs.map((job) => {

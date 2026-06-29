@@ -1,19 +1,21 @@
 import { Toaster } from 'sonner'
 
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useResolvedTheme } from '../hooks/useResolvedTheme'
 
 export function AppToaster() {
   const theme = useResolvedTheme()
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
 
   return (
     <Toaster
       theme={theme}
-      position="bottom-center"
+      position={isDesktop ? 'bottom-center' : 'top-center'}
       expand
       closeButton
-      visibleToasts={5}
+      visibleToasts={isDesktop ? 5 : 3}
       gap={10}
-      offset={20}
+      offset={isDesktop ? 20 : 12}
       toastOptions={{
         classNames: {
           toast: 'app-toast',

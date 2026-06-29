@@ -115,7 +115,7 @@ export function DownloadDestinationWizard({
       icon={<FolderDown size={15} />}
       onClose={onClose}
       className="preferences-modal-panel max-h-[85vh] w-full max-w-xl"
-      bodyClassName="modal-scroll space-y-4 p-5"
+      bodyClassName="modal-scroll app-screen-body space-y-4"
       zClassName="z-[60]"
     >
       {step === 'choose' ? (

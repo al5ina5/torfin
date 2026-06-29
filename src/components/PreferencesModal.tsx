@@ -25,6 +25,7 @@ import {
   SettingsSelect,
   SettingsToggle,
 } from './SettingsSection'
+import { SecretInput } from './SecretInput'
 import { TorboxAccountPanel } from './TorboxAccountPanel'
 
 type PreferencesModalProps = {
@@ -51,6 +52,14 @@ type PreferencesModalProps = {
 }
 
 const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
+
+const preferenceTabLabels: Record<PreferencesTab, string> = {
+  general: 'General',
+  playback: 'Playback',
+  downloads: 'Download settings',
+  plugins: 'Plugins',
+  advanced: 'Advanced',
+}
 
 const startupCatalogOptions: Array<{ id: StartupCatalogId; label: string }> = [
   { id: 'lastUsed', label: 'Last used' },
@@ -89,28 +98,29 @@ export function PreferencesModal({
       title="Preferences"
       onClose={onClose}
       className="preferences-modal-panel"
-      bodyClassName="modal-scroll p-5"
       headerEnd={
-        <div className="grid grid-cols-5 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
+        <div className="grid w-full grid-cols-5 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
           {preferenceTabs.map((entry) => (
             <button
               key={entry}
               type="button"
               onClick={() => onTabChange(entry)}
-              className={`h-7 min-w-0 rounded-md px-2 text-[11px] font-semibold capitalize transition ${
+              aria-label={preferenceTabLabels[entry]}
+              aria-current={tab === entry ? 'page' : undefined}
+              className={`h-7 min-w-0 rounded-md px-2 text-[11px] font-semibold transition ${
                 tab === entry
                   ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
                   : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control-hover)]'
               }`}
             >
-              {entry}
+              {preferenceTabLabels[entry]}
             </button>
           ))}
         </div>
       }
     >
       {tab === 'general' ? (
-        <div className="mx-auto max-w-xl space-y-0">
+        <div className="space-y-0">
           <SettingsSection title="Appearance" first>
             <SettingsRange
               label="Poster size"
@@ -229,7 +239,7 @@ export function PreferencesModal({
       ) : null}
 
       {tab === 'playback' ? (
-        <div className="mx-auto max-w-xl space-y-0">
+        <div className="space-y-0">
           {isMacTauri() ? (
             <SettingsSection title="macOS Player" first>
               <SettingsToggle
@@ -345,7 +355,7 @@ export function PreferencesModal({
       ) : null}
 
       {tab === 'downloads' ? (
-        <div className="mx-auto max-w-2xl space-y-0">
+        <div className="space-y-0">
           <SettingsSection title="Download Behavior" first>
             <SettingsToggle
               label="Always confirm download destination"
@@ -382,7 +392,7 @@ export function PreferencesModal({
       ) : null}
 
       {tab === 'plugins' ? (
-        <div className="mx-auto max-w-2xl space-y-0">
+        <div className="space-y-0">
           <SettingsSection title="Torbox Account" first>
             <TorboxAccountPanel apiKey={torboxApiKey} />
             <label className="block">
@@ -390,12 +400,7 @@ export function PreferencesModal({
                 <KeyRound size={13} />
                 Torbox API Key
               </span>
-              <input
-                value={torboxApiKey}
-                onChange={(event) => onChangeTorboxApiKey(event.target.value)}
-                type="password"
-                className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[12px] outline-none focus:border-[var(--mac-accent)]"
-              />
+              <SecretInput value={torboxApiKey} onChange={onChangeTorboxApiKey} />
             </label>
           </SettingsSection>
 
@@ -450,7 +455,7 @@ export function PreferencesModal({
       ) : null}
 
       {tab === 'advanced' ? (
-        <div className="mx-auto max-w-xl space-y-0">
+        <div className="space-y-0">
           <SettingsSection title="Custom Stream Profiles" first>
             <SettingsHint>Create profiles with your own resolution, size, and caching rules.</SettingsHint>
             <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">

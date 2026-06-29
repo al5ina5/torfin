@@ -231,6 +231,7 @@ function SidebarContent({
       <div className="shrink-0 border-t border-[var(--mac-divider,var(--mac-border))] p-2">
         <button
           type="button"
+          aria-label="Open download queue"
           onClick={() => handleNavigate(onOpenDownloads)}
           className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left transition ${
             downloadsOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'

@@ -99,7 +99,7 @@ export function MovieList({
   return (
     <div
       ref={scrollRef}
-      className={`@container min-h-0 flex-1 overflow-y-auto px-3 py-3 app-touch-bottom-scroll-padded-sm${showEmpty ? ' flex flex-col' : ''}`}
+      className={`app-movie-scroll @container min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded-sm${showEmpty ? ' flex flex-col' : ''}`}
     >
       {loading ? (
         <ListSkeleton />
@@ -151,7 +151,7 @@ export function MovieList({
                     type="button"
                     onClick={() => onToggleWatchlist(movie)}
                     className="grid size-6 shrink-0 place-items-center rounded border border-[var(--mac-border)] bg-[var(--mac-control)] transition-[transform,background] duration-150 hover:bg-[var(--mac-control-hover)] active:scale-95"
-                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                    aria-label={inWatchlist ? `Remove ${movie.name} from watchlist` : `Add ${movie.name} to watchlist`}
                   >
                     <Heart size={11} fill={inWatchlist ? 'currentColor' : 'none'} />
                   </button>

@@ -424,7 +424,12 @@ function isAuthorizedApiRequest(request, pathname) {
 async function readJson(request) {
   let body = ''
   for await (const chunk of request) body += chunk
-  return body ? JSON.parse(body) : {}
+  if (!body) return {}
+  try {
+    return JSON.parse(body)
+  } catch {
+    throw new Error('Request body is not valid JSON.')
+  }
 }
 
 function sanitizeFilename(value, fallback = 'Torfin Download.mkv') {
@@ -1000,6 +1005,9 @@ async function startLocalDownload(request) {
     samples: [],
     logPath,
     createdAt: new Date().toISOString(),
+    refreshJellyfinOnComplete: request.refreshJellyfinOnComplete !== false,
+    jellyfinUrl: String(request.jellyfinUrl || '').trim(),
+    jellyfinApiKey: String(request.jellyfinApiKey || '').trim(),
   }
   ensureJobLogPath(job)
   jobs[id] = job
@@ -1382,6 +1390,10 @@ async function waitForJellyfinImport(job, config) {
 }
 
 async function refreshConfiguredJellyfin(job) {
+  if (job.refreshJellyfinOnComplete === false) {
+    appendJobLog(job, 'jellyfin.refresh.skipped', { reason: 'disabled for this download' })
+    return
+  }
   const baseUrl = String(job.jellyfinUrl || defaultJellyfinUrl || '').trim()
   const apiKey = String(job.jellyfinApiKey || defaultJellyfinApiKey || '').trim()
   if (!baseUrl || !apiKey) {
