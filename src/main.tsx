@@ -9,6 +9,14 @@ import App from './App.tsx'
 
 initTheme()
 
+function syncViewportHeight() {
+  document.documentElement.style.setProperty('--app-viewport-height', `${window.innerHeight}px`)
+}
+
+syncViewportHeight()
+window.addEventListener('resize', syncViewportHeight, { passive: true })
+window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true })
+
 registerSW({ immediate: true })
 
 createRoot(document.getElementById('root')!).render(

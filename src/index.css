@@ -93,6 +93,7 @@ html {
   background: var(--mac-window);
   color: var(--mac-text);
   height: var(--app-viewport-height);
+  height: -webkit-fill-available;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -104,15 +105,26 @@ html {
 
 body {
   height: var(--app-viewport-height);
+  height: -webkit-fill-available;
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: manipulation;
+  background: var(--mac-window);
   padding:
     var(--app-safe-top)
     var(--app-safe-right)
     var(--app-safe-bottom)
     var(--app-safe-left);
+}
+
+@media (max-width: 1023px), (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: auto;
+  }
 }
 
 body.modal-open {
@@ -1238,7 +1250,7 @@ html[data-theme="dark"] .mac-elevated {
 
 [data-sonner-toaster] {
   --width: min(360px, calc(100vw - 32px));
-  --border-radius: 10px;
+  --border-radius: 16px;
   font-family: inherit;
   bottom: calc(20px + var(--app-safe-bottom)) !important;
 }
@@ -1253,40 +1265,43 @@ html[data-theme="dark"] .mac-elevated {
   --normal-text: var(--mac-text) !important;
 
   --success-bg: color-mix(in srgb, #34c759 12%, var(--mac-elevated)) !important;
-  --success-border: color-mix(in srgb, #34c759 28%, var(--mac-border)) !important;
+  --success-border: color-mix(in srgb, #34c759 18%, var(--mac-border)) !important;
   --success-text: var(--mac-text) !important;
 
   --info-bg: color-mix(in srgb, var(--mac-accent) 12%, var(--mac-elevated)) !important;
-  --info-border: color-mix(in srgb, var(--mac-accent) 28%, var(--mac-border)) !important;
+  --info-border: color-mix(in srgb, var(--mac-accent) 18%, var(--mac-border)) !important;
   --info-text: var(--mac-text) !important;
 
   --warning-bg: color-mix(in srgb, #ff9500 12%, var(--mac-elevated)) !important;
-  --warning-border: color-mix(in srgb, #ff9500 28%, var(--mac-border)) !important;
+  --warning-border: color-mix(in srgb, #ff9500 18%, var(--mac-border)) !important;
   --warning-text: var(--mac-text) !important;
 
   --error-bg: color-mix(in srgb, #ff3b30 12%, var(--mac-elevated)) !important;
-  --error-border: color-mix(in srgb, #ff3b30 28%, var(--mac-border)) !important;
+  --error-border: color-mix(in srgb, #ff3b30 18%, var(--mac-border)) !important;
   --error-text: var(--mac-text) !important;
 }
 
 [data-sonner-toast][data-styled='true'] {
+  border-width: 0.5px;
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.06),
-    0 8px 24px rgba(0, 0, 0, 0.1);
+    0 1px 2px rgba(0, 0, 0, 0.03),
+    0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 html[data-theme='dark'] [data-sonner-toast][data-styled='true'],
 html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    0 8px 24px rgba(0, 0, 0, 0.35);
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.18);
 }
 
 @media (prefers-color-scheme: dark) {
   html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
     box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.2),
-      0 8px 24px rgba(0, 0, 0, 0.35);
+      0 1px 2px rgba(0, 0, 0, 0.12),
+      0 4px 12px rgba(0, 0, 0, 0.18);
   }
 }
 
