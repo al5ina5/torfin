@@ -64,6 +64,7 @@ import { toast } from './lib/toast'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
 import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
@@ -189,6 +190,7 @@ export default function App() {
   const [playbackStatus, setPlaybackStatus] = useState('')
   const [playbackStartAt, setPlaybackStartAt] = useState<number | null>(null)
   const [playbackDuration, setPlaybackDuration] = useState<number | null>(null)
+  const [playbackMediaOffset, setPlaybackMediaOffset] = useState(0)
   const [focusedMovieIndex, setFocusedMovieIndex] = useState(0)
   const [batchDownloading, setBatchDownloading] = useState(false)
   const [enrichedMovie, setEnrichedMovie] = useState<Movie | null>(null)
@@ -457,6 +459,7 @@ export default function App() {
     setPlaybackError('')
     setPlaybackStatus('')
     setPlaybackDuration(null)
+    setPlaybackMediaOffset(0)
   }, [route.title, selectedMovie])
 
   useEffect(() => {
@@ -918,10 +921,11 @@ export default function App() {
         sourceUrl = await refreshActiveSourceUrl()
         setCurrentSourceUrl(sourceUrl)
       }
-      const result = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)
+      const result = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex, 0)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(result.url))
       setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
+      setPlaybackMediaOffset(result.mediaOffset ?? 0)
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
@@ -940,11 +944,16 @@ export default function App() {
     return resolveStreamUrl(torboxApiKey, active.stream, directUrl)
   }
 
-  async function startTranscodeWithRefresh(sourceUrl: string, audioIndex: number | null, subtitleIndex: number | null) {
+  async function startTranscodeWithRefresh(
+    sourceUrl: string,
+    audioIndex: number | null,
+    subtitleIndex: number | null,
+    startSeconds = 0,
+  ) {
     let url = sourceUrl
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        return await startHlsTranscode(url, audioIndex, subtitleIndex)
+        return await startHlsTranscode(url, audioIndex, subtitleIndex, startSeconds)
       } catch (error) {
         const canRefresh = attempt === 1 && activePlaybackStreamRef.current && isRetriablePlaybackError(error)
         if (!canRefresh) throw error
@@ -965,6 +974,7 @@ export default function App() {
     setPlaybackTitle(title)
     setPlaybackStartAt(resumeAt)
     setPlaybackDuration(null)
+    setPlaybackMediaOffset(0)
     setSelectedAudioIndex(audioIndex)
     setSelectedSubtitleIndex(subtitleIndex)
 
@@ -977,22 +987,27 @@ export default function App() {
       if (audioIndex === null && info?.audioTracks[0]?.index !== undefined) {
         setSelectedAudioIndex(info.audioTracks[0].index)
       }
+      if (shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
+        setPlaybackStatus(playbackPrepareStatus(info, audioIndex, subtitleIndex))
+      }
     })
 
     if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
       setPlaybackDuration(mediaInfo?.duration ?? null)
+      setPlaybackMediaOffset(0)
       setPlaybackStatus('')
       return
     }
 
-    setPlaybackStatus(audioIndex === null && subtitleIndex === null ? 'Transcoding' : 'Preparing')
+    setPlaybackStatus('Preparing')
     try {
-      const result = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex)
+      const result = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex, resumeAt ?? 0)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(result.url))
       setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
+      setPlaybackMediaOffset(result.mediaOffset ?? resumeAt ?? 0)
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
@@ -1269,6 +1284,7 @@ export default function App() {
     setPlaybackError('')
     setPlaybackStatus('')
     setPlaybackDuration(null)
+    setPlaybackMediaOffset(0)
     setNextEpisodePrompt(null)
   }
 
@@ -1369,7 +1385,7 @@ export default function App() {
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[var(--mac-window)] text-[var(--mac-text)]">
+    <main className="app-viewport overflow-hidden bg-[var(--mac-window)] text-[var(--mac-text)]">
       {/* Mobile sidebar backdrop */}
       {!isDesktop ? (
         <div
@@ -1599,6 +1615,8 @@ export default function App() {
           playbackStatus={playbackStatus}
           playbackStartAt={playbackStartAt}
           playbackDuration={playbackDuration}
+          playbackMediaOffset={playbackMediaOffset}
+          onPlaybackMediaOffsetChange={setPlaybackMediaOffset}
           mediaInfo={mediaInfo}
           selectedAudioIndex={selectedAudioIndex}
           selectedSubtitleIndex={selectedSubtitleIndex}

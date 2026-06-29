@@ -23,6 +23,15 @@ export const filterGenres = [
   'Western',
 ] as const
 
+export const topGenres = [
+  'Action',
+  'Comedy',
+  'Drama',
+  'Horror',
+  'Sci-Fi',
+  'Thriller',
+] as const satisfies readonly GenreLabel[]
+
 export type GenreLabel = (typeof filterGenres)[number]
 
 const genreCatalogIdOverrides: Partial<Record<GenreLabel, string>> = {

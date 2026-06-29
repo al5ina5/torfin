@@ -1,6 +1,8 @@
-import { Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv, X } from 'lucide-react'
 
 import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
+import { topGenres } from '../lib/genres'
 import { catalogOptions, isLibraryCatalog, libraryCatalogOptions } from '../lib/movies'
 import type { ContentType } from '../types'
 
@@ -50,7 +52,16 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const allOptions = [...libraryCatalogOptions, ...catalogOptions]
+  const topGenreSet = new Set<string>(topGenres)
+  const [genresExpanded, setGenresExpanded] = useState(false)
   const swipeDismiss = useSwipeDismiss(() => onClose?.(), 'left')
+
+  useEffect(() => {
+    const selected = allOptions.find((option) => option.id === catalogId)
+    if (selected?.group === 'Genres' && !topGenreSet.has(selected.label)) {
+      setGenresExpanded(true)
+    }
+  }, [catalogId])
   const { activeCount, topProgress, resolvingCount } = downloadSummary
   const progressPercent = Math.round(topProgress * 100)
   const showDownloadActivity = activeCount > 0 || resolvingCount > 0
@@ -126,9 +137,16 @@ export function Sidebar({
               {group}
             </div>
             <div className="space-y-1">
-              {allOptions
-                .filter((option) => option.group === group)
-                .map((option) => {
+              {(group === 'Genres'
+                ? (genresExpanded
+                    ? allOptions
+                        .filter((option) => option.group === 'Genres')
+                        .sort((left, right) => left.label.localeCompare(right.label))
+                    : allOptions.filter(
+                        (option) => option.group === 'Genres' && topGenreSet.has(option.label),
+                      ))
+                : allOptions.filter((option) => option.group === group)
+              ).map((option) => {
                   const count = option.id === 'watchlist'
                     ? watchlistCount
                     : option.id === 'continue'
@@ -162,6 +180,16 @@ export function Sidebar({
                     </button>
                   )
                 })}
+              {group === 'Genres' ? (
+                <button
+                  type="button"
+                  onClick={() => setGenresExpanded((expanded) => !expanded)}
+                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-[var(--mac-secondary)] transition hover:bg-[var(--mac-control)] hover:text-[var(--mac-text)]"
+                >
+                  {genresExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>{genresExpanded ? 'Show less' : 'Show more'}</span>
+                </button>
+              ) : null}
             </div>
           </div>
         ))}
@@ -170,18 +198,8 @@ export function Sidebar({
       <div className="border-t border-[var(--mac-divider,var(--mac-border))] p-2">
         <button
           type="button"
-          onClick={() => handleNavigate(onOpenPreferences)}
-          className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
-            preferencesOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'
-          }`}
-        >
-          <Settings2 size={15} />
-          <span className="truncate">Settings</span>
-        </button>
-        <button
-          type="button"
           onClick={() => handleNavigate(onOpenDownloads)}
-          className={`mt-1 flex w-full flex-col rounded-md px-2 py-1.5 text-left transition ${
+          className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left transition ${
             downloadsOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'
           }`}
         >
@@ -211,6 +229,16 @@ export function Sidebar({
               />
             </span>
           ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleNavigate(onOpenPreferences)}
+          className={`mt-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
+            preferencesOpen ? 'bg-[var(--mac-control-hover)]' : 'hover:bg-[var(--mac-control)]'
+          }`}
+        >
+          <Settings2 size={15} />
+          <span className="truncate">Settings</span>
         </button>
       </div>
     </aside>

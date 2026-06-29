@@ -289,6 +289,8 @@ export type MediaInfo = {
   subtitleTracks: MediaTrack[]
 }
 
+export type TranscodeMode = 'copy' | 'remux' | 'transcode'
+
 export type HlsTranscodeProgress = {
   active: boolean
   segmentCount: number
@@ -296,11 +298,15 @@ export type HlsTranscodeProgress = {
   transcodedSeconds: number
   processRunning: boolean
   duration?: number | null
+  mode?: TranscodeMode | null
 }
 
 export type HlsTranscodeResult = {
   url: string
   duration?: number | null
+  mediaOffset?: number
+  mode?: TranscodeMode
+  statusLabel?: string
 }
 
 export type SeriesMetaEpisode = {

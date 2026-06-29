@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { fetchTorboxAccount, isVideoFilename, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
-import { isFfmpegAvailable, getHlsTranscodeProgress, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
+import { isFfmpegAvailable, getHlsTranscodeProgress, probeMedia, seekHlsTranscode, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -1465,8 +1465,24 @@ async function handleApi(request, response, pathname) {
     sendJson(response, 200, { url: await resolveTorboxStream(body) })
     return
   }
+  if (pathname === '/api/inspect-media' && request.method === 'POST') {
+    sendJson(response, 200, await probeMedia(body.url))
+    return
+  }
   if (pathname === '/api/start-hls-transcode' && request.method === 'POST') {
-    const result = await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null)
+    const startSeconds = Math.max(0, Number(body.startSeconds) || 0)
+    const result = await startHlsTranscode(
+      body.url,
+      body.audioStreamIndex ?? null,
+      body.subtitleStreamIndex ?? null,
+      startSeconds,
+    )
+    sendJson(response, 200, result)
+    return
+  }
+  const seekMatch = pathname.match(/^\/api\/hls-transcode\/([^/]+)\/seek$/)
+  if (seekMatch && request.method === 'POST') {
+    const result = await seekHlsTranscode(seekMatch[1], body.time)
     sendJson(response, 200, result)
     return
   }

@@ -1,6 +1,6 @@
 import { useRef, type TouchEvent } from 'react'
 
-type SwipeDirection = 'left' | 'right'
+type SwipeDirection = 'left' | 'right' | 'down'
 
 export function useSwipeDismiss(onDismiss: () => void, direction: SwipeDirection, threshold = 72) {
   const startX = useRef(0)
@@ -21,7 +21,11 @@ export function useSwipeDismiss(onDismiss: () => void, direction: SwipeDirection
       if (!touch) return
       const deltaX = touch.clientX - startX.current
       const deltaY = touch.clientY - startY.current
-      if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (direction === 'down') {
+        if (Math.abs(deltaX) > Math.abs(deltaY) || deltaY < 0) {
+          tracking.current = false
+        }
+      } else if (Math.abs(deltaY) > Math.abs(deltaX)) {
         tracking.current = false
       }
     },
@@ -32,6 +36,11 @@ export function useSwipeDismiss(onDismiss: () => void, direction: SwipeDirection
       if (!touch) return
       const deltaX = touch.clientX - startX.current
       const deltaY = touch.clientY - startY.current
+      if (direction === 'down') {
+        if (Math.abs(deltaX) > Math.abs(deltaY) || deltaY < 0) return
+        if (deltaY > threshold) onDismiss()
+        return
+      }
       if (Math.abs(deltaY) > Math.abs(deltaX)) return
       if (direction === 'left' && deltaX < -threshold) onDismiss()
       if (direction === 'right' && deltaX > threshold) onDismiss()

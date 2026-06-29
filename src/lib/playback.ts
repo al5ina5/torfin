@@ -33,10 +33,17 @@ export function isBrowserPlayableUrl(url: string) {
 }
 
 export async function inspectMedia(sourceUrl: string): Promise<MediaInfo | null> {
-  if (!isTauriRuntime()) return null
+  if (isTauriRuntime()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      return await invoke<MediaInfo>('inspect_media', { url: sourceUrl })
+    } catch {
+      return null
+    }
+  }
+
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<MediaInfo>('inspect_media', { url: sourceUrl })
+    return await postApi<MediaInfo>('/api/inspect-media', { url: sourceUrl })
   } catch {
     return null
   }
@@ -46,6 +53,7 @@ export async function startHlsTranscode(
   sourceUrl: string,
   audioStreamIndex: number | null = null,
   subtitleStreamIndex: number | null = null,
+  startSeconds = 0,
 ): Promise<HlsTranscodeResult> {
   if (isTauriRuntime()) {
     const { invoke } = await import('@tauri-apps/api/core')
@@ -54,14 +62,32 @@ export async function startHlsTranscode(
       audioStreamIndex,
       subtitleStreamIndex,
     })
-    return { url }
+    return { url, mediaOffset: startSeconds }
   }
 
   return postApi<HlsTranscodeResult>('/api/start-hls-transcode', {
     url: sourceUrl,
     audioStreamIndex,
     subtitleStreamIndex,
+    startSeconds,
   })
+}
+
+export function isTranscodePlaybackUrl(url: string) {
+  return url.includes('/api/hls-transcode/') || url.includes('hls-transcode')
+}
+
+export function transcodeSessionId(url: string) {
+  const match = url.match(/\/api\/hls-transcode\/([^/]+)\//)
+  return match?.[1] ?? null
+}
+
+export async function seekHlsTranscode(sessionId: string, time: number): Promise<HlsTranscodeResult> {
+  if (isTauriRuntime()) {
+    throw new Error('Seek is not supported in the desktop app yet.')
+  }
+
+  return postApi<HlsTranscodeResult>(`/api/hls-transcode/${sessionId}/seek`, { time })
 }
 
 export async function getHlsTranscodeProgress(): Promise<HlsTranscodeProgress> {

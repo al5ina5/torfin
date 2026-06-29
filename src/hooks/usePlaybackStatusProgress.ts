@@ -22,7 +22,7 @@ const WHIMSICAL_MESSAGES = [
   'Fetching more butter for the popcorn…',
 ]
 
-const TRANSCODE_STATUSES = new Set(['Transcoding', 'Preparing'])
+const TRANSCODE_STATUSES = new Set(['Transcoding', 'Preparing', 'Remuxing', 'Starting'])
 
 function formatClock(seconds: number) {
   const total = Math.max(0, Math.floor(seconds))
@@ -134,6 +134,14 @@ export function usePlaybackStatusProgress(status: string, mediaInfo: MediaInfo |
       detail = `Loading next episode · ${elapsed}`
     } else if (status === 'Retrying playback') {
       detail = `Recovering playback · ${elapsed}`
+    } else if (status === 'Remuxing') {
+      detail = segmentCount === 0
+        ? `Remuxing audio for browser playback · ${elapsed}`
+        : detail.replace('encoded', 'remuxed')
+    } else if (status === 'Starting') {
+      detail = segmentCount === 0
+        ? `Starting direct stream · ${elapsed}`
+        : `Stream ready · ${elapsed}`
     } else if (isTranscoding) {
       if (stalled) {
         detail = segmentCount === 0
