@@ -60,7 +60,7 @@ import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from '
 import { applyThemeMode, saveThemeMode } from './lib/theme'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
-import { inspectMedia, needsTranscodeFallback, playbackUnavailableMessage, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
@@ -211,6 +211,7 @@ export default function App() {
   const pendingAutoPlayRef = useRef(false)
   const autoPlayedStreamKeyRef = useRef<string | null>(null)
   const playbackGenerationRef = useRef(0)
+  const activePlaybackStreamRef = useRef<{ stream: StreamResult; index: number } | null>(null)
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
   const startupSyncedRef = useRef(false)
 
@@ -377,11 +378,12 @@ export default function App() {
   useEffect(() => {
     if (route.contentType !== contentType) setContentType(route.contentType)
     if (route.searchQuery !== undefined) {
-      if (route.searchQuery !== query) setQuery(route.searchQuery)
+      // Only sync URL → input when the user isn't mid-edit (query ahead of debounced value).
+      if (query === debouncedQuery && route.searchQuery !== query) setQuery(route.searchQuery)
       return
     }
     if (route.catalogId !== catalogId) setCatalogId(route.catalogId)
-  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType, query])
+  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType, query, debouncedQuery])
 
   const prevRouteUrlRef = useRef(routeUrl)
   useEffect(() => {
@@ -877,7 +879,7 @@ export default function App() {
     setPlaybackError('')
     setPlaybackUrl('')
     try {
-      const hlsUrl = await startHlsTranscode(currentSourceUrl, selectedAudioIndex, selectedSubtitleIndex)
+      const hlsUrl = await startTranscodeWithRefresh(currentSourceUrl, selectedAudioIndex, selectedSubtitleIndex)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(hlsUrl)
       setPlaybackStatus('')
@@ -887,6 +889,29 @@ export default function App() {
       setPlaybackStatus('')
     }
   }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex])
+
+  async function refreshActiveSourceUrl() {
+    const active = activePlaybackStreamRef.current
+    if (!active) throw new Error('No active stream to refresh.')
+    const directUrl = active.stream.url?.startsWith('http') && !active.stream.infoHash ? active.stream.url : undefined
+    return resolveStreamUrl(torboxApiKey, active.stream, directUrl)
+  }
+
+  async function startTranscodeWithRefresh(sourceUrl: string, audioIndex: number | null, subtitleIndex: number | null) {
+    let url = sourceUrl
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        return await startHlsTranscode(url, audioIndex, subtitleIndex)
+      } catch (error) {
+        const canRefresh = attempt === 1 && activePlaybackStreamRef.current && isRetriablePlaybackError(error)
+        if (!canRefresh) throw error
+        setPlaybackStatus('Refreshing link')
+        url = await refreshActiveSourceUrl()
+        setCurrentSourceUrl(url)
+      }
+    }
+    throw new Error('Could not start transcoded playback.')
+  }
 
   async function preparePlayback(sourceUrl: string, title: string, audioIndex: number | null, subtitleIndex: number | null, resumeAt: number | null = null) {
     const generation = ++playbackGenerationRef.current
@@ -915,7 +940,7 @@ export default function App() {
 
     setPlaybackStatus(audioIndex === null && subtitleIndex === null ? 'Transcoding' : 'Preparing')
     try {
-      const hlsUrl = await startHlsTranscode(sourceUrl, audioIndex, subtitleIndex)
+      const hlsUrl = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(hlsUrl)
       setPlaybackStatus('')
@@ -956,6 +981,7 @@ export default function App() {
   async function playStream(stream: StreamResult, index: number) {
     if (!selectedMovie) return
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
+    activePlaybackStreamRef.current = { stream, index }
     setResolvingStreamKey(key)
     setPlaybackError('')
     setPlaybackStatus('Resolving')

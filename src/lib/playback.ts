@@ -59,6 +59,17 @@ export function shouldTranscodeDirectly(sourceUrl: string, audioIndex: number | 
   return !isBrowserPlayableUrl(sourceUrl)
 }
 
+export function isRetriablePlaybackError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('FFmpeg exited before the stream was ready')
+    || message.includes('did not produce a playable stream in time')
+    || message.includes('Error opening input')
+    || message.includes('Connection reset')
+    || message.includes('HTTP error')
+    || message.includes('Upstream returned HTTP')
+  )
+}
 export function playbackUnavailableMessage() {
   if (isTauriRuntime()) {
     return 'This stream is not playable. Install FFmpeg (brew install ffmpeg) or try another result.'

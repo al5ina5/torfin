@@ -1,27 +1,45 @@
 import { spawn, execFileSync } from 'node:child_process'
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, appendFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
-/** @type {Map<string, { dir: string, process: import('node:child_process').ChildProcessWithoutNullStreams | null }>} */
+/** @type {Map<string, { dir: string, process: import('node:child_process').ChildProcessWithoutNullStreams | null, closeProxy?: () => Promise<void> }>} */
 const sessions = new Map()
+
+const PROXY_USER_AGENT = 'Torfin/1.0.0-beta'
+const TRANSCODE_ATTEMPTS = 3
 
 const FFMPEG_HTTP_ARGS = [
   '-reconnect',
   '1',
   '-reconnect_streamed',
   '1',
+  '-reconnect_on_network_error',
+  '1',
+  '-reconnect_on_http_error',
+  '403,404,429,500,502,503,504',
   '-reconnect_delay_max',
-  '5',
+  '10',
+  '-multiple_requests',
+  '1',
+  '-seekable',
+  '0',
+  '-timeout',
+  '30000000',
+  '-rw_timeout',
+  '30000000',
   '-probesize',
   '10000000',
   '-analyzeduration',
   '10000000',
   '-fflags',
-  '+genpts',
+  '+genpts+discardcorrupt',
   '-user_agent',
-  'Torfin/1.0.0-beta',
+  PROXY_USER_AGENT,
 ]
 
 function findFfmpeg() {
@@ -36,11 +54,16 @@ function findFfmpeg() {
   return null
 }
 
+function isRemoteUrl(url) {
+  return /^https?:\/\//i.test(url)
+}
+
 function stopActiveSession() {
   for (const [id, session] of sessions) {
     if (session.process) {
       session.process.kill('SIGTERM')
     }
+    void session.closeProxy?.()
     try {
       rmSync(session.dir, { recursive: true, force: true })
     } catch {
@@ -65,13 +88,114 @@ function formatFfmpegDetails(stderrChunks) {
   return details || 'No ffmpeg output was captured.'
 }
 
+function isRetriableTranscodeError(error) {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('FFmpeg exited before the stream was ready')
+    || message.includes('did not produce a playable stream in time')
+    || message.includes('Error opening input')
+    || message.includes('Connection reset')
+    || message.includes('HTTP error')
+    || message.includes('Upstream returned HTTP')
+  )
+}
+
+async function fetchUpstream(sourceUrl, requestHeaders = {}) {
+  const headers = {
+    Accept: '*/*',
+    'User-Agent': PROXY_USER_AGENT,
+    ...requestHeaders,
+  }
+
+  let lastError = null
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const upstream = await fetch(sourceUrl, { headers, redirect: 'follow' })
+      if (!upstream.ok && upstream.status !== 206) {
+        throw new Error(`Upstream returned HTTP ${upstream.status}`)
+      }
+      return upstream
+    } catch (error) {
+      lastError = error
+      if (attempt < 3) await sleep(attempt * 750)
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Could not reach the stream source.')
+}
+
+function createInputProxy(sourceUrl) {
+  return new Promise((resolve, reject) => {
+    const server = createServer(async (request, response) => {
+      try {
+        const requestHeaders = {}
+        if (request.headers.range) requestHeaders.Range = String(request.headers.range)
+
+        const upstream = await fetchUpstream(sourceUrl, requestHeaders)
+        const responseHeaders = {
+          'content-type': upstream.headers.get('content-type') || 'application/octet-stream',
+          'access-control-allow-origin': '*',
+          'accept-ranges': upstream.headers.get('accept-ranges') || 'bytes',
+        }
+        const contentLength = upstream.headers.get('content-length')
+        const contentRange = upstream.headers.get('content-range')
+        if (contentLength) responseHeaders['content-length'] = contentLength
+        if (contentRange) responseHeaders['content-range'] = contentRange
+
+        response.writeHead(upstream.status, responseHeaders)
+        if (!upstream.body) {
+          response.end()
+          return
+        }
+
+        await pipeline(Readable.fromWeb(upstream.body), response)
+      } catch (error) {
+        if (!response.headersSent) {
+          response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
+        }
+        response.end(error instanceof Error ? error.message : 'Proxy request failed')
+      }
+    })
+
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close()
+        reject(new Error('Could not start the stream proxy.'))
+        return
+      }
+
+      resolve({
+        url: `http://127.0.0.1:${address.port}/`,
+        close: () => new Promise((closeResolve) => {
+          server.close(() => closeResolve())
+        }),
+      })
+    })
+  })
+}
+
+async function resolveFfmpegInput(sourceUrl) {
+  if (!isRemoteUrl(sourceUrl)) {
+    return { inputUrl: sourceUrl }
+  }
+
+  const proxy = await createInputProxy(sourceUrl)
+  return {
+    inputUrl: proxy.url,
+    closeProxy: proxy.close,
+  }
+}
+
 function buildFfmpegArgs(sourceUrl, audioStreamIndex, subtitleStreamIndex, segmentPattern, playlist) {
+  const inputOptions = isRemoteUrl(sourceUrl) ? [] : FFMPEG_HTTP_ARGS
   const args = [
     '-hide_banner',
     '-loglevel',
     'warning',
     '-nostdin',
-    ...FFMPEG_HTTP_ARGS,
+    ...inputOptions,
     '-i',
     sourceUrl,
     '-map',
@@ -139,7 +263,7 @@ function isPlaylistReady(playlistPath, segmentPath) {
   return existsSync(segmentPath)
 }
 
-async function waitForPlaylist(playlistPath, segmentPath, child, stderrChunks, timeoutMs = 90000) {
+async function waitForPlaylist(playlistPath, segmentPath, child, stderrChunks, timeoutMs = 120000) {
   let exitCode = null
   child.on('close', (code) => {
     exitCode = code
@@ -152,13 +276,13 @@ async function waitForPlaylist(playlistPath, segmentPath, child, stderrChunks, t
       throw new Error(`FFmpeg exited before the stream was ready.\n${formatFfmpegDetails(stderrChunks)}`)
     }
     if (isPlaylistReady(playlistPath, segmentPath)) return
-    await sleep(500)
+    await sleep(250)
   }
 
   throw new Error(`The transcoder did not produce a playable stream in time.\n${formatFfmpegDetails(stderrChunks)}`)
 }
 
-export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subtitleStreamIndex = null) {
+async function startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStreamIndex) {
   const ffmpeg = findFfmpeg()
   if (!ffmpeg) {
     throw new Error('FFmpeg is not available. Rebuild the Docker image or install ffmpeg on this host.')
@@ -174,7 +298,8 @@ export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subt
   const firstSegment = join(sessionDir, 'segment_00000.ts')
   const segmentPattern = join(sessionDir, 'segment_%05d.ts')
   const stderrLog = join(sessionDir, 'ffmpeg.log')
-  const args = buildFfmpegArgs(sourceUrl, audioStreamIndex, subtitleStreamIndex, segmentPattern, playlist)
+  const { inputUrl, closeProxy } = await resolveFfmpegInput(sourceUrl)
+  const args = buildFfmpegArgs(inputUrl, audioStreamIndex, subtitleStreamIndex, segmentPattern, playlist)
   const stderrChunks = []
 
   const child = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] })
@@ -188,7 +313,7 @@ export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subt
     }
   })
 
-  sessions.set(sessionId, { dir: sessionDir, process: child })
+  sessions.set(sessionId, { dir: sessionDir, process: child, closeProxy })
 
   try {
     await waitForPlaylist(playlist, firstSegment, child, stderrChunks)
@@ -198,6 +323,23 @@ export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subt
   }
 
   return `/api/hls-transcode/${sessionId}/playlist.m3u8`
+}
+
+export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subtitleStreamIndex = null) {
+  let lastError = null
+  for (let attempt = 1; attempt <= TRANSCODE_ATTEMPTS; attempt += 1) {
+    try {
+      return await startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStreamIndex)
+    } catch (error) {
+      lastError = error
+      if (!isRetriableTranscodeError(error) || attempt === TRANSCODE_ATTEMPTS) {
+        throw error
+      }
+      await sleep(attempt * 1000)
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Could not start transcoded playback.')
 }
 
 export function serveHlsTranscodeFile(pathname, response) {

@@ -1,6 +1,9 @@
 static ACTIVE_TRANSCODER: std::sync::OnceLock<std::sync::Mutex<Option<std::process::Child>>> =
     std::sync::OnceLock::new();
 
+const PROXY_USER_AGENT: &str = "Torfin/1.0.0-beta";
+const TRANSCODE_ATTEMPTS: usize = 3;
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MediaTrack {
@@ -40,12 +43,35 @@ fn start_hls_transcode_inner(
     audio_stream_index: Option<i64>,
     subtitle_stream_index: Option<i64>,
 ) -> Result<String, String> {
+    let mut last_error = None;
+    for attempt in 1..=TRANSCODE_ATTEMPTS {
+        match start_hls_transcode_attempt(&url, audio_stream_index, subtitle_stream_index) {
+            Ok(result) => return Ok(result),
+            Err(error) => {
+                let retriable = is_retriable_transcode_error(&error);
+                last_error = Some(error);
+                if !retriable || attempt == TRANSCODE_ATTEMPTS {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis((attempt as u64) * 1000));
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "Could not start transcoded playback.".to_string()))
+}
+
+fn start_hls_transcode_attempt(
+    url: &str,
+    audio_stream_index: Option<i64>,
+    subtitle_stream_index: Option<i64>,
+) -> Result<String, String> {
     stop_active_transcoder();
 
     let ffmpeg = find_ffmpeg().ok_or_else(|| {
         "Install ffmpeg to play this video type. Homebrew: brew install ffmpeg".to_string()
     })?;
-    let source = reqwest::Url::parse(&url).map_err(|error| error.to_string())?;
+    let source = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
 
     if source.scheme() != "https" && source.scheme() != "http" && source.scheme() != "file" {
         return Err("Only HTTP, HTTPS, and file URLs can be transcoded.".to_string());
@@ -61,10 +87,13 @@ fn start_hls_transcode_inner(
     std::fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
 
     let playlist = session_dir.join("playlist.m3u8");
+    let first_segment = session_dir.join("segment_00000.ts");
     let segment_pattern = session_dir.join("segment_%05d.ts");
     let stderr_log = session_dir.join("ffmpeg.log");
     let stderr_file = std::fs::File::create(&stderr_log).map_err(|error| error.to_string())?;
     let server_url = start_hls_file_server(session_dir.clone())?;
+
+    let input_url = url.to_string();
 
     let mut command = std::process::Command::new(ffmpeg);
     let mut args = vec![
@@ -75,14 +104,7 @@ fn start_hls_transcode_inner(
     ];
 
     if source.scheme() == "http" || source.scheme() == "https" {
-        args.extend([
-            "-reconnect".to_string(),
-            "1".to_string(),
-            "-reconnect_streamed".to_string(),
-            "1".to_string(),
-            "-reconnect_delay_max".to_string(),
-            "5".to_string(),
-        ]);
+        args.extend(ffmpeg_http_input_args());
     }
 
     args.extend([
@@ -91,9 +113,9 @@ fn start_hls_transcode_inner(
         "-analyzeduration".to_string(),
         "10000000".to_string(),
         "-fflags".to_string(),
-        "+genpts".to_string(),
+        "+genpts+discardcorrupt".to_string(),
         "-i".to_string(),
-        source.as_str().to_string(),
+        input_url,
         "-map".to_string(),
         "0:v:0".to_string(),
     ]);
@@ -168,7 +190,22 @@ fn start_hls_transcode_inner(
         .lock()
         .map_err(|_| "Could not lock transcoder state.".to_string())? = Some(child);
 
-    wait_for_playlist(&playlist, &stderr_log)?;
+    let wait_result = {
+        let active = ACTIVE_TRANSCODER
+            .get()
+            .ok_or_else(|| "Transcoder state is unavailable.".to_string())?;
+        let mut guard = active
+            .lock()
+            .map_err(|_| "Could not lock transcoder state.".to_string())?;
+        let child = guard
+            .as_mut()
+            .ok_or_else(|| "Transcoder process is unavailable.".to_string())?;
+        wait_for_playlist(&playlist, &first_segment, &stderr_log, child)
+    };
+    if wait_result.is_err() {
+        stop_active_transcoder();
+    }
+    wait_result?;
     Ok(format!("{server_url}/playlist.m3u8"))
 }
 
@@ -190,26 +227,19 @@ fn inspect_media_inner(url: String) -> Result<MediaInfo, String> {
     }
 
     let mut args = vec![
-        "-v",
-        "error",
-        "-print_format",
-        "json",
-        "-show_entries",
-        "format=duration,format_name:stream=index,codec_type,codec_name:stream_tags=language,title",
+        "-v".to_string(),
+        "error".to_string(),
+        "-print_format".to_string(),
+        "json".to_string(),
+        "-show_entries".to_string(),
+        "format=duration,format_name:stream=index,codec_type,codec_name:stream_tags=language,title".to_string(),
     ];
 
     if source.scheme() == "http" || source.scheme() == "https" {
-        args.extend([
-            "-reconnect",
-            "1",
-            "-reconnect_streamed",
-            "1",
-            "-reconnect_delay_max",
-            "5",
-        ]);
+        args.extend(ffmpeg_http_input_args());
     }
 
-    args.extend(["-i", source.as_str()]);
+    args.extend(["-i".to_string(), source.to_string()]);
 
     let output = std::process::Command::new(ffprobe)
         .args(args)
@@ -423,20 +453,53 @@ fn start_hls_file_server(root: std::path::PathBuf) -> Result<String, String> {
     Ok(address)
 }
 
-fn wait_for_playlist(
-    playlist: &std::path::Path,
-    stderr_log: &std::path::Path,
-) -> Result<(), String> {
-    for _ in 0..40 {
-        if let Ok(contents) = std::fs::read_to_string(playlist) {
-            if contents.contains("#EXTINF") {
-                return Ok(());
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
+fn ffmpeg_http_input_args() -> Vec<String> {
+    [
+        "-reconnect",
+        "1",
+        "-reconnect_streamed",
+        "1",
+        "-reconnect_on_network_error",
+        "1",
+        "-reconnect_on_http_error",
+        "403,404,429,500,502,503,504",
+        "-reconnect_delay_max",
+        "10",
+        "-multiple_requests",
+        "1",
+        "-seekable",
+        "0",
+        "-timeout",
+        "30000000",
+        "-rw_timeout",
+        "30000000",
+        "-user_agent",
+        PROXY_USER_AGENT,
+    ]
+    .into_iter()
+    .map(ToString::to_string)
+    .collect()
+}
 
-    let details = std::fs::read_to_string(stderr_log)
+fn is_retriable_transcode_error(error: &str) -> bool {
+    error.contains("FFmpeg exited before the stream was ready")
+        || error.contains("did not produce a playable stream in time")
+        || error.contains("Error opening input")
+        || error.contains("Connection reset")
+        || error.contains("HTTP error")
+}
+
+fn is_playlist_ready(playlist: &std::path::Path, first_segment: &std::path::Path) -> bool {
+    if let Ok(contents) = std::fs::read_to_string(playlist) {
+        if contents.contains("#EXTINF") {
+            return true;
+        }
+    }
+    first_segment.exists()
+}
+
+fn ffmpeg_stderr_details(stderr_log: &std::path::Path) -> String {
+    std::fs::read_to_string(stderr_log)
         .ok()
         .map(|text| {
             text.lines()
@@ -449,10 +512,37 @@ fn wait_for_playlist(
                 .join("\n")
         })
         .filter(|text| !text.trim().is_empty())
-        .unwrap_or_else(|| "No ffmpeg output was captured.".to_string());
+        .unwrap_or_else(|| "No ffmpeg output was captured.".to_string())
+}
+
+fn wait_for_playlist(
+    playlist: &std::path::Path,
+    first_segment: &std::path::Path,
+    stderr_log: &std::path::Path,
+    child: &mut std::process::Child,
+) -> Result<(), String> {
+    for _ in 0..480 {
+        if let Ok(Some(status)) = child.try_wait() {
+            if is_playlist_ready(playlist, first_segment) {
+                return Ok(());
+            }
+            return Err(format!(
+                "FFmpeg exited before the stream was ready (code {}).\n{}",
+                status.code().unwrap_or(-1),
+                ffmpeg_stderr_details(stderr_log)
+            ));
+        }
+
+        if is_playlist_ready(playlist, first_segment) {
+            return Ok(());
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 
     Err(format!(
-        "The transcoder did not produce a playable stream in time.\n{details}"
+        "The transcoder did not produce a playable stream in time.\n{}",
+        ffmpeg_stderr_details(stderr_log)
     ))
 }
 
