@@ -48,10 +48,9 @@ export function AppModal({
           aria-labelledby="app-modal-title"
           className={`app-modal-drawer-sheet mac-elevated ${visible ? 'is-open' : ''} ${className} !w-full !max-w-none`}
           onClick={(event) => event.stopPropagation()}
-          {...swipeDismiss}
         >
-          <div className="app-modal-drawer-grabber" aria-hidden="true" />
-          <header className="app-modal-drawer-header">
+          <div className="app-modal-drawer-grabber" aria-hidden="true" {...swipeDismiss} />
+          <header className="app-modal-drawer-header" {...swipeDismiss}>
             <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-10">
               {icon ? <span className="shrink-0 text-[var(--mac-secondary)]">{icon}</span> : null}
               <h2 id="app-modal-title" className="truncate text-[15px] font-semibold">
