@@ -289,6 +289,14 @@ export type MediaInfo = {
   subtitleTracks: MediaTrack[]
 }
 
+export type HlsTranscodeProgress = {
+  active: boolean
+  segmentCount: number
+  playlistReady: boolean
+  transcodedSeconds: number
+  processRunning: boolean
+}
+
 export type SeriesMetaEpisode = {
   id: string
   title?: string

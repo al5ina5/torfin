@@ -1,4 +1,4 @@
-import { CheckCircle2, FolderDown, Loader2, Pencil, Plus, Server, Star, Trash2, XCircle } from 'lucide-react'
+import { FolderDown, Loader2, Pencil, Plus, Server, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import {
@@ -14,6 +14,7 @@ import {
 } from '../lib/download-destinations'
 import type { DestinationSecrets } from '../lib/download-destinations'
 import { isTauriRuntime } from '../lib/api'
+import { toast } from '../lib/toast'
 import type { DownloadConfig, DownloadDestination } from '../types'
 import { DownloadDestinationWizard } from './DownloadDestinationWizard'
 import { JellyfinIntegrationSettings } from './JellyfinIntegrationSettings'
@@ -39,14 +40,14 @@ export function DownloadDestinationsSettings({
   const [wizardOpen, setWizardOpen] = useState(false)
   const [editing, setEditing] = useState<DownloadDestination | null>(null)
   const [testingId, setTestingId] = useState('')
-  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({})
 
   async function handleTest(destination: DownloadDestination) {
     setTestingId(destination.id)
     try {
       const secrets = await loadDestinationSecrets(destination)
       const result = await testDestination(destination, secrets, isDesktop)
-      setTestResults((current) => ({ ...current, [destination.id]: result }))
+      if (result.ok) toast.success('Connection verified', destination.name)
+      else toast.error('Connection test failed', result.message)
       onUpdateDownloadConfig(
         upsertDestination(downloadConfig, {
           ...destination,
@@ -57,7 +58,7 @@ export function DownloadDestinationsSettings({
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Connection test failed.'
-      setTestResults((current) => ({ ...current, [destination.id]: { ok: false, message } }))
+      toast.error('Connection test failed', message)
     } finally {
       setTestingId('')
     }
@@ -65,21 +66,15 @@ export function DownloadDestinationsSettings({
 
   async function handleSave(destination: DownloadDestination, secrets: DestinationSecrets, makeDefault: boolean) {
     onUpdateDownloadConfig(upsertDestination(downloadConfig, destination, makeDefault))
-    setTestResults((current) => ({
-      ...current,
-      [destination.id]: { ok: true, message: destination.lastTestMessage || 'Saved.' },
-    }))
+    toast.success('Destination saved', destination.name)
     void secrets
   }
 
   function handleRemove(id: string) {
     if (!window.confirm('Remove this download destination?')) return
+    const destination = downloadConfig.destinations.find((entry) => entry.id === id)
     onUpdateDownloadConfig(removeDestination(downloadConfig, id))
-    setTestResults((current) => {
-      const next = { ...current }
-      delete next[id]
-      return next
-    })
+    toast.info('Destination removed', destination?.name)
   }
 
   return (
@@ -133,7 +128,6 @@ export function DownloadDestinationsSettings({
             {downloadConfig.destinations.map((destination) => {
               const ready = destinationIsReady(destination, isDesktop)
               const configured = destinationIsConfigured(destination)
-              const test = testResults[destination.id]
               const Icon = destination.kind === 'local' ? FolderDown : Server
               return (
                 <div key={destination.id} className="rounded-xl border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
@@ -175,12 +169,6 @@ export function DownloadDestinationsSettings({
                                 : 'Incomplete setup'}
                         </p>
                       )}
-                      {test ? (
-                        <div className={`mt-2 flex items-start gap-1.5 text-[11px] ${test.ok ? 'text-emerald-600' : 'text-red-600 dark:text-red-300'}`}>
-                          {test.ok ? <CheckCircle2 size={12} className="mt-0.5" /> : <XCircle size={12} className="mt-0.5" />}
-                          <span>{test.message}</span>
-                        </div>
-                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-col gap-1">
                       {!destination.isDefault ? (

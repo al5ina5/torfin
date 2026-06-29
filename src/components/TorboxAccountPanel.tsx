@@ -1,18 +1,32 @@
 import { Loader2, RefreshCw } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import useSWR from 'swr'
 
 import { fetchTorboxAccount } from '../lib/torbox-account'
+import { toast } from '../lib/toast'
 
 type TorboxAccountPanelProps = {
   apiKey: string
 }
 
 export function TorboxAccountPanel({ apiKey }: TorboxAccountPanelProps) {
+  const lastErrorRef = useRef('')
   const { data, error, isLoading, mutate } = useSWR(
     apiKey.trim() ? ['torbox-account', apiKey.trim()] : null,
     () => fetchTorboxAccount(apiKey),
     { revalidateOnFocus: false },
   )
+
+  useEffect(() => {
+    if (!apiKey.trim() || !error) {
+      lastErrorRef.current = ''
+      return
+    }
+    const message = error instanceof Error ? error.message : 'Could not load Torbox account.'
+    if (message === lastErrorRef.current) return
+    lastErrorRef.current = message
+    toast.error('Torbox account', message)
+  }, [apiKey, error])
 
   return (
     <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
@@ -32,7 +46,7 @@ export function TorboxAccountPanel({ apiKey }: TorboxAccountPanelProps) {
       {!apiKey.trim() ? (
         <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">Add your Torbox API key above to see plan and torrent status.</p>
       ) : error ? (
-        <p className="text-[11px] leading-4 text-red-600 dark:text-red-300">{error instanceof Error ? error.message : 'Could not load Torbox account.'}</p>
+        <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">Could not load account details. Check the notification for details.</p>
       ) : data ? (
         <div className="grid grid-cols-2 gap-2 text-[11px]">
           <div className="rounded-md bg-[var(--mac-control)] px-2.5 py-2">

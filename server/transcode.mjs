@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process'
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, appendFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, appendFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -327,6 +327,49 @@ async function startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStream
   }
 
   return `/api/hls-transcode/${sessionId}/playlist.m3u8`
+}
+
+const HLS_SEGMENT_DURATION_SECS = 2
+
+function countHlsSegments(sessionDir) {
+  try {
+    return readdirSync(sessionDir).filter((name) => name.startsWith('segment_') && name.endsWith('.ts')).length
+  } catch {
+    return 0
+  }
+}
+
+function getActiveTranscodeSession() {
+  for (const session of sessions.values()) {
+    if (session.process) return session
+  }
+  return null
+}
+
+export function getHlsTranscodeProgress() {
+  const session = getActiveTranscodeSession()
+  if (!session) {
+    return {
+      active: false,
+      segmentCount: 0,
+      playlistReady: false,
+      transcodedSeconds: 0,
+      processRunning: false,
+    }
+  }
+
+  const playlist = join(session.dir, 'playlist.m3u8')
+  const firstSegment = join(session.dir, 'segment_00000.ts')
+  const segmentCount = countHlsSegments(session.dir)
+  const processRunning = session.process ? session.process.exitCode === null : false
+
+  return {
+    active: true,
+    segmentCount,
+    playlistReady: isPlaylistReady(playlist, firstSegment),
+    transcodedSeconds: segmentCount * HLS_SEGMENT_DURATION_SECS,
+    processRunning,
+  }
 }
 
 export async function startHlsTranscode(sourceUrl, audioStreamIndex = null, subtitleStreamIndex = null) {

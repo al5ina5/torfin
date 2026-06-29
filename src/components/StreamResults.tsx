@@ -20,7 +20,6 @@ type StreamResultsProps = {
   resultsExpanded: boolean
   onToggleExpanded: () => void
   emptyMessage: string
-  streamErrors: string[]
   onRefresh: () => void
   resolvingKey: string
   downloadingKey: string
@@ -38,7 +37,6 @@ export function StreamResults({
   resultsExpanded,
   onToggleExpanded,
   emptyMessage,
-  streamErrors,
   onRefresh,
   resolvingKey,
   downloadingKey,
@@ -178,13 +176,6 @@ export function StreamResults({
         </div>
       )}
 
-      {streamErrors.length ? (
-        <div className="mt-2 rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] leading-4 text-amber-700 dark:text-amber-200">
-          {streamErrors.slice(0, 3).map((error) => (
-            <div key={error}>{error}</div>
-          ))}
-        </div>
-      ) : null}
     </div>
   )
 }

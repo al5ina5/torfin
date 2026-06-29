@@ -15,8 +15,6 @@ type MovieListProps = {
   showRatings: boolean
   loading: boolean
   loadingMore: boolean
-  movieErrorMessage?: string
-  searchErrorMessage?: string
   hasMoreMovies: boolean
   shouldRemoteSearch: boolean
   scrollRef: React.RefObject<HTMLDivElement | null>
@@ -89,8 +87,6 @@ export function MovieList({
   showRatings,
   loading,
   loadingMore,
-  movieErrorMessage = '',
-  searchErrorMessage = '',
   hasMoreMovies,
   shouldRemoteSearch,
   scrollRef,
@@ -106,17 +102,6 @@ export function MovieList({
 
   return (
     <div ref={scrollRef} className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">
-      {movieErrorMessage ? (
-        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-600 dark:text-red-200">
-          {movieErrorMessage}
-        </div>
-      ) : null}
-      {searchErrorMessage ? (
-        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[13px] text-amber-700 dark:text-amber-200">
-          {searchErrorMessage}
-        </div>
-      ) : null}
-
       {loading ? (
         <ListSkeleton />
       ) : movies.length ? (

@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register'
 import { SWRConfig } from 'swr'
 import './index.css'
 import { initTheme } from './lib/theme'
+import { AppToaster } from './components/AppToaster'
 import App from './App.tsx'
 
 initTheme()
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
       }}
     >
       <App />
+      <AppToaster />
     </SWRConfig>
   </StrictMode>,
 )

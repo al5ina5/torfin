@@ -1,8 +1,11 @@
 static ACTIVE_TRANSCODER: std::sync::OnceLock<std::sync::Mutex<Option<std::process::Child>>> =
     std::sync::OnceLock::new();
+static ACTIVE_TRANSCODE_DIR: std::sync::OnceLock<std::sync::Mutex<Option<std::path::PathBuf>>> =
+    std::sync::OnceLock::new();
 
 const PROXY_USER_AGENT: &str = "Torfin/1.0.0-beta";
 const TRANSCODE_ATTEMPTS: usize = 3;
+const HLS_SEGMENT_DURATION_SECS: f64 = 2.0;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,6 +15,16 @@ pub(crate) struct MediaTrack {
     label: String,
     language: Option<String>,
     codec: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HlsTranscodeProgress {
+    active: bool,
+    segment_count: usize,
+    playlist_ready: bool,
+    transcoded_seconds: f64,
+    process_running: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -85,6 +98,7 @@ fn start_hls_transcode_attempt(
             .as_millis()
     ));
     std::fs::create_dir_all(&session_dir).map_err(|error| error.to_string())?;
+    set_active_transcode_dir(session_dir.clone());
 
     let playlist = session_dir.join("playlist.m3u8");
     let first_segment = session_dir.join("segment_00000.ts");
@@ -207,6 +221,45 @@ fn start_hls_transcode_attempt(
     }
     wait_result?;
     Ok(format!("{server_url}/playlist.m3u8"))
+}
+
+#[tauri::command]
+pub(crate) async fn get_hls_transcode_progress() -> Result<HlsTranscodeProgress, String> {
+    tauri::async_runtime::spawn_blocking(get_hls_transcode_progress_inner)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_hls_transcode_progress_inner() -> Result<HlsTranscodeProgress, String> {
+    let session_dir = ACTIVE_TRANSCODE_DIR
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .map_err(|_| "Could not lock transcode session state.".to_string())?
+        .clone();
+
+    let Some(dir) = session_dir else {
+        return Ok(HlsTranscodeProgress {
+            active: false,
+            segment_count: 0,
+            playlist_ready: false,
+            transcoded_seconds: 0.0,
+            process_running: false,
+        });
+    };
+
+    let playlist = dir.join("playlist.m3u8");
+    let first_segment = dir.join("segment_00000.ts");
+    let segment_count = count_hls_segments(&dir);
+    let playlist_ready = is_playlist_ready(&playlist, &first_segment);
+    let process_running = is_transcoder_running();
+
+    Ok(HlsTranscodeProgress {
+        active: true,
+        segment_count,
+        playlist_ready,
+        transcoded_seconds: segment_count as f64 * HLS_SEGMENT_DURATION_SECS,
+        process_running,
+    })
 }
 
 #[tauri::command]
@@ -344,16 +397,64 @@ fn inspect_media_inner(url: String) -> Result<MediaInfo, String> {
 }
 
 fn stop_active_transcoder() {
-    let Some(active) = ACTIVE_TRANSCODER.get() else {
-        return;
-    };
-
-    if let Ok(mut child) = active.lock() {
-        if let Some(mut process) = child.take() {
-            let _ = process.kill();
-            let _ = process.wait();
+    if let Some(active) = ACTIVE_TRANSCODER.get() {
+        if let Ok(mut child) = active.lock() {
+            if let Some(mut process) = child.take() {
+                let _ = process.kill();
+                let _ = process.wait();
+            }
         }
     }
+
+    if let Some(dir) = ACTIVE_TRANSCODE_DIR.get() {
+        if let Ok(mut guard) = dir.lock() {
+            *guard = None;
+        }
+    }
+}
+
+fn set_active_transcode_dir(dir: std::path::PathBuf) {
+    *ACTIVE_TRANSCODE_DIR
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .expect("Could not lock transcode session state.") = Some(dir);
+}
+
+fn is_transcoder_running() -> bool {
+    let Some(active) = ACTIVE_TRANSCODER.get() else {
+        return false;
+    };
+
+    let Ok(mut guard) = active.lock() else {
+        return false;
+    };
+
+    let Some(child) = guard.as_mut() else {
+        return false;
+    };
+
+    child
+        .try_wait()
+        .ok()
+        .flatten()
+        .is_none()
+}
+
+fn count_hls_segments(dir: &std::path::Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .map(|name| name.starts_with("segment_") && name.ends_with(".ts"))
+                .unwrap_or(false)
+        })
+        .count()
 }
 
 fn find_ffmpeg() -> Option<std::path::PathBuf> {

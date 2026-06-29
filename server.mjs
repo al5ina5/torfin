@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { fetchTorboxAccount, isVideoFilename, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
-import { isFfmpegAvailable, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
+import { isFfmpegAvailable, getHlsTranscodeProgress, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -1435,6 +1435,10 @@ async function handleApi(request, response, pathname) {
     sendJson(response, 200, {
       url: await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null),
     })
+    return
+  }
+  if (pathname === '/api/hls-transcode-progress' && request.method === 'GET') {
+    sendJson(response, 200, getHlsTranscodeProgress())
     return
   }
   if (pathname.startsWith('/api/hls-transcode/') && request.method === 'GET') {

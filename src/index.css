@@ -383,6 +383,19 @@ html[data-theme="dark"] .mac-elevated {
   }
 }
 
+.playback-status-indeterminate {
+  animation: playback-status-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes playback-status-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
 .movie-player {
   position: relative;
   isolation: isolate;
@@ -880,4 +893,109 @@ html[data-theme="dark"] .mac-elevated {
   .movie-poster-skeleton {
     animation: none !important;
   }
+}
+
+/* ── Toast notifications (Sonner) ───────────────────────────────────────── */
+
+[data-sonner-toaster] {
+  --width: min(360px, calc(100vw - 32px));
+  --border-radius: 10px;
+  font-family: inherit;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0)) !important;
+}
+
+/* Override Sonner's injected light/dark theme tokens with app mac variables */
+[data-sonner-toaster][data-sonner-theme='light'],
+[data-sonner-toaster][data-sonner-theme='dark'] {
+  --normal-bg: var(--mac-elevated) !important;
+  --normal-bg-hover: var(--mac-control-hover) !important;
+  --normal-border: var(--mac-border) !important;
+  --normal-border-hover: var(--mac-border-strong) !important;
+  --normal-text: var(--mac-text) !important;
+
+  --success-bg: color-mix(in srgb, #34c759 12%, var(--mac-elevated)) !important;
+  --success-border: color-mix(in srgb, #34c759 28%, var(--mac-border)) !important;
+  --success-text: var(--mac-text) !important;
+
+  --info-bg: color-mix(in srgb, var(--mac-accent) 12%, var(--mac-elevated)) !important;
+  --info-border: color-mix(in srgb, var(--mac-accent) 28%, var(--mac-border)) !important;
+  --info-text: var(--mac-text) !important;
+
+  --warning-bg: color-mix(in srgb, #ff9500 12%, var(--mac-elevated)) !important;
+  --warning-border: color-mix(in srgb, #ff9500 28%, var(--mac-border)) !important;
+  --warning-text: var(--mac-text) !important;
+
+  --error-bg: color-mix(in srgb, #ff3b30 12%, var(--mac-elevated)) !important;
+  --error-border: color-mix(in srgb, #ff3b30 28%, var(--mac-border)) !important;
+  --error-text: var(--mac-text) !important;
+}
+
+[data-sonner-toast][data-styled='true'] {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+html[data-theme='dark'] [data-sonner-toast][data-styled='true'],
+html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.2),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+[data-sonner-toast][data-styled='true'] [data-description] {
+  color: var(--mac-secondary) !important;
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button] {
+  border-color: var(--mac-border);
+  background: var(--mac-control);
+  color: var(--mac-secondary);
+  border-radius: 6px;
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button]:hover {
+  background: var(--mac-control-hover);
+  border-color: var(--mac-border-strong);
+  color: var(--mac-text);
+}
+
+[data-sonner-toast].app-toast {
+  padding: 12px 14px;
+  gap: 4px;
+}
+
+[data-sonner-toast] .app-toast-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+[data-sonner-toast] .app-toast-description {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+[data-sonner-toast].app-toast-success [data-icon] {
+  color: #34c759;
+}
+
+[data-sonner-toast].app-toast-error [data-icon] {
+  color: #ff3b30;
+}
+
+[data-sonner-toast].app-toast-warning [data-icon] {
+  color: #ff9500;
+}
+
+[data-sonner-toast].app-toast-info [data-icon] {
+  color: var(--mac-accent);
 }

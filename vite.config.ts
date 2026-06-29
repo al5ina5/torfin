@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -58,39 +60,6 @@ export default defineConfig({
     {
       name: 'torfin-dev-api',
       configureServer(server) {
-        server.middlewares.use('/api/start-hls-transcode', async (request, response) => {
-          if (request.method !== 'POST') {
-            sendJson(response, 405, { error: 'Method not allowed' })
-            return
-          }
-          try {
-            // @ts-ignore -- untyped JS helper module
-            const { startHlsTranscode } = await import('./server/transcode.mjs')
-            const body = await readJsonBody(request)
-            sendJson(response, 200, {
-              url: await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null),
-            })
-          } catch (error) {
-            sendJson(response, 500, { error: error instanceof Error ? error.message : 'Could not start transcoding.' })
-          }
-        })
-
-        server.middlewares.use(async (request, response, next) => {
-          const url = new URL(request.url || '/', 'http://127.0.0.1')
-          if (request.method === 'GET' && url.pathname.startsWith('/api/hls-transcode/')) {
-            try {
-              // @ts-ignore -- untyped JS helper module
-              const { serveHlsTranscodeFile } = await import('./server/transcode.mjs')
-              if (serveHlsTranscodeFile(url.pathname, response)) return
-              sendJson(response, 404, { error: 'Transcode session not found' })
-            } catch (error) {
-              sendJson(response, 500, { error: error instanceof Error ? error.message : 'Could not serve transcode output.' })
-            }
-            return
-          }
-          return next()
-        })
-
         server.middlewares.use('/api/fetch-json', async (request, response) => {
           try {
             const requestUrl = new URL(request.url || '/', 'http://127.0.0.1')
@@ -157,13 +126,23 @@ export default defineConfig({
               headers,
               body: body?.length ? body : undefined,
             })
-            response.statusCode = upstream.status
-            upstream.headers.forEach((value, key) => {
-              if (key.toLowerCase() === 'transfer-encoding') return
-              response.setHeader(key, value)
-            })
-            response.end(Buffer.from(await upstream.arrayBuffer()))
+            if (!response.writableEnded) {
+              response.statusCode = upstream.status
+              upstream.headers.forEach((value, key) => {
+                if (['transfer-encoding', 'connection'].includes(key.toLowerCase())) return
+                response.setHeader(key, value)
+              })
+            }
+            if (!upstream.body) {
+              if (!response.writableEnded) response.end()
+              return
+            }
+            await pipeline(Readable.fromWeb(upstream.body), response)
           } catch (error) {
+            if (response.headersSent || response.writableEnded) {
+              response.destroy()
+              return
+            }
             const cause = error instanceof Error && 'cause' in error ? (error.cause as NodeJS.ErrnoException) : null
             const refused = cause?.code === 'ECONNREFUSED'
             sendJson(response, refused ? 503 : 500, {

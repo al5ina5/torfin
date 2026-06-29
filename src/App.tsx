@@ -18,6 +18,7 @@ import { useCatalogScrollLoad } from './hooks/useCatalogScrollLoad'
 import { readAppRoute } from './lib/app-routes'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { useDockBadge } from './hooks/useDockBadge'
+import { useErrorListToast, useMessageToast } from './hooks/useErrorToasts'
 import { useDownloadNotifications } from './hooks/useDownloadNotifications'
 import { loadServerDownloads, useDownloadPolling } from './hooks/useDownloadPolling'
 import { liveMetricsForJob, useLiveDownloadMetrics } from './hooks/useLiveDownloadMetrics'
@@ -58,9 +59,10 @@ import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentVie
 import { hydrateUrl, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
 import { applyThemeMode, saveThemeMode } from './lib/theme'
+import { toast } from './lib/toast'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
-import { canRetryPlaybackWithTranscode, inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
@@ -211,6 +213,7 @@ export default function App() {
   const pendingAutoPlayRef = useRef(false)
   const autoPlayedStreamKeyRef = useRef<string | null>(null)
   const playbackGenerationRef = useRef(0)
+  const playbackRecoveryCountRef = useRef(0)
   const activePlaybackStreamRef = useRef<{ stream: StreamResult; index: number } | null>(null)
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
   const startupSyncedRef = useRef(false)
@@ -670,8 +673,18 @@ export default function App() {
     : selectedMovie?.type === 'series' && !episodeSelection
       ? 'Choose a season and episode to load streams for this show.'
     : streamErrors.length
-      ? `The enabled source did not return usable results. Check the warning below, refresh, or try another ${contentLabelSingular.toLowerCase()}.`
+      ? `The enabled source did not return usable results. Refresh or try another ${contentLabelSingular.toLowerCase()}.`
       : `No stream results were found for this ${contentLabelSingular.toLowerCase()} from the enabled sources. Try another profile, refresh, or choose another title.`
+
+  const episodeLoadError = seriesMetaError
+    ? (seriesMetaError instanceof Error ? seriesMetaError.message : 'Could not load episodes')
+    : ''
+
+  useMessageToast(movieErrorMessage, 'error', `Could not load ${contentLabelPlural.toLowerCase()}`)
+  useMessageToast(searchErrorMessage, 'warning', 'Search failed')
+  useMessageToast(playbackError, 'error', 'Playback failed')
+  useMessageToast(episodeLoadError, 'error', 'Could not load episodes')
+  useErrorListToast(streamErrors)
 
   function updatePreferences(patch: Partial<AppPreferences>) {
     setPreferences((current) => ({ ...current, ...patch }))
@@ -716,15 +729,16 @@ export default function App() {
       if (payload.contentType === 'series' || payload.contentType === 'movie') {
         setContentType(payload.contentType)
       }
-      window.alert('Settings imported. API keys were not changed.')
+      toast.success('Settings imported', 'API keys were not changed.')
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Could not import settings.')
+      toast.error('Import failed', error instanceof Error ? error.message : 'Could not import settings.')
     }
   }
 
   function handleClearSearchHistory() {
     clearSearchHistory()
     setSearchHistory([])
+    toast.success('Search history cleared')
   }
 
   function handleResetPanelSizes() {
@@ -811,9 +825,11 @@ export default function App() {
         },
         ...current.filter((job) => job.pendingId !== id),
       ])
+      toast.success('Download started', movie.name)
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not start download.'
       setDownloadJobs((current) => [
-        { pendingId: id, movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig, error: error instanceof Error ? error.message : 'Could not start download.' },
+        { pendingId: id, movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig, error: message },
         ...current.filter((job) => job.pendingId !== id),
       ])
     } finally {
@@ -867,36 +883,40 @@ export default function App() {
   }
 
   const handlePlaybackFailure = useCallback(async () => {
-    let sourceUrl = currentSourceUrl
-    if (!canRetryPlaybackWithTranscode(sourceUrl) && activePlaybackStreamRef.current) {
-      try {
-        setPlaybackStatus('Refreshing link')
-        sourceUrl = await refreshActiveSourceUrl()
-        setCurrentSourceUrl(sourceUrl)
-      } catch {
-        // fall through to the generic error below
-      }
-    }
-
-    if (!canRetryPlaybackWithTranscode(sourceUrl)) {
+    if (!currentSourceUrl) {
       setPlaybackUrl('')
       setPlaybackError(playbackUnavailableMessage())
       setPlaybackStatus('')
       return
     }
 
+    if (playbackRecoveryCountRef.current >= 1) {
+      setPlaybackUrl('')
+      setPlaybackError('Playback failed. Try playing again or choose another result.')
+      setPlaybackStatus('')
+      return
+    }
+
+    playbackRecoveryCountRef.current += 1
     const generation = ++playbackGenerationRef.current
-    const isDirectPlayback = needsTranscodeFallback(sourceUrl, playbackUrl)
+    const isDirectPlayback = needsTranscodeFallback(currentSourceUrl, playbackUrl)
     setPlaybackStatus(isDirectPlayback ? 'Transcoding' : 'Retrying playback')
     setPlaybackError('')
     setPlaybackUrl('')
     try {
+      let sourceUrl = currentSourceUrl
+      if (!isDirectPlayback && activePlaybackStreamRef.current) {
+        setPlaybackStatus('Refreshing link')
+        sourceUrl = await refreshActiveSourceUrl()
+        setCurrentSourceUrl(sourceUrl)
+      }
       const hlsUrl = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(hlsUrl))
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
+      setPlaybackUrl('')
       setPlaybackError(error instanceof Error ? error.message : playbackUnavailableMessage())
       setPlaybackStatus('')
     }
@@ -927,6 +947,7 @@ export default function App() {
 
   async function preparePlayback(sourceUrl: string, title: string, audioIndex: number | null, subtitleIndex: number | null, resumeAt: number | null = null) {
     const generation = ++playbackGenerationRef.current
+    playbackRecoveryCountRef.current = 0
     setPlaybackStatus('Opening')
     setPlaybackError('')
     setPlaybackUrl('')
@@ -1024,6 +1045,7 @@ export default function App() {
 
   const handlePlaybackTimeUpdate = useCallback(
     (currentTime: number, duration: number) => {
+      if (currentTime >= 2) playbackRecoveryCountRef.current = 0
       if (!selectedMovie) return
       savePlaybackPosition(selectedMovie, currentTime, duration, episodeSelection?.season, episodeSelection?.episode)
     },
@@ -1133,6 +1155,7 @@ export default function App() {
         const best = filterStreamsForProfile(found.sort((a, b) => b.rank - a.rank), resultProfile, preferences.preferCachedResults, activeCustomProfile)[0]
         if (best) await queueDownload(best, entry.episode, selectedMovie, { season: entry.season, episode: entry.episode }, destination)
       }
+      toast.success('Season queued', `Season ${selectedSeason} downloads added to the queue.`)
     } finally {
       setBatchDownloading(false)
     }
@@ -1140,7 +1163,9 @@ export default function App() {
 
   async function cancelDownloadJob(job: DownloadJob) {
     const id = job.status?.id ?? job.pendingId
+    const name = job.movie.name
     setDownloadJobs((current) => current.filter((item) => item !== job))
+    toast.info('Download removed', name)
     if (!id) return
     if (tauri) {
       const mode = job.pollConfig?.mode
@@ -1162,7 +1187,10 @@ export default function App() {
   }
 
   function handleToggleWatchlist(movie: Movie) {
-    setWatchlist(toggleWatchlist(movie))
+    const next = toggleWatchlist(movie)
+    setWatchlist(next)
+    const added = next.some((entry) => entry.id === movie.id && entry.type === movie.type)
+    toast.success(added ? 'Added to watchlist' : 'Removed from watchlist', movie.name)
   }
 
   function handleSelectMovie(movie: Movie) {
@@ -1435,8 +1463,6 @@ export default function App() {
               showRatings={preferences.showRatings}
               loading={moviesLoading}
               loadingMore={loadingMoreMovies}
-              movieErrorMessage={movieErrorMessage}
-              searchErrorMessage={searchErrorMessage}
               hasMoreMovies={hasMoreMovies}
               shouldRemoteSearch={shouldRemoteSearch}
               scrollRef={moviePanelScrollRef}
@@ -1457,8 +1483,6 @@ export default function App() {
               showRatings={preferences.showRatings}
               loading={moviesLoading}
               loadingMore={loadingMoreMovies}
-              movieErrorMessage={movieErrorMessage}
-              searchErrorMessage={searchErrorMessage}
               hasMoreMovies={hasMoreMovies}
               shouldRemoteSearch={shouldRemoteSearch}
               scrollRef={moviePanelScrollRef}
@@ -1493,7 +1517,7 @@ export default function App() {
           topStreamQuality={topStreamQuality}
           episodeOptions={seriesEpisodes || []}
           loadingEpisodes={seriesMetaLoading}
-          episodeLoadError={seriesMetaError ? (seriesMetaError instanceof Error ? seriesMetaError.message : 'Could not load episodes') : ''}
+          episodeLoadError={episodeLoadError}
           selectedSeason={selectedSeason}
           selectedEpisode={selectedEpisode}
           onSeasonChange={handleSeasonChange}
@@ -1504,13 +1528,11 @@ export default function App() {
           compactStreams={compactStreams}
           profileOptions={profileOptions}
           loadingStreams={streamsLoading}
-          streamErrors={streamErrors}
           streamEmptyMessage={streamEmptyMessage}
           resultProfile={resultProfile}
           resultsExpanded={resultsExpanded}
           playbackUrl={playbackUrl}
           playbackTitle={playbackTitle}
-          playbackError={playbackError}
           playbackStatus={playbackStatus}
           playbackStartAt={playbackStartAt}
           mediaInfo={mediaInfo}
@@ -1552,7 +1574,11 @@ export default function App() {
           onClose={() => { setDownloadSortOpen(false); closeModal() }}
           onSortOpen={setDownloadSortOpen}
           onSortChange={setDownloadSort}
-          onClearFinished={() => setDownloadJobs((current) => current.filter((job) => !(job.status?.complete || job.status?.state.startsWith('error:') || job.error)))}
+          onClearFinished={() => {
+            const count = downloadJobs.filter((job) => job.status?.complete || job.status?.state.startsWith('error:') || job.error).length
+            setDownloadJobs((current) => current.filter((job) => !(job.status?.complete || job.status?.state.startsWith('error:') || job.error)))
+            if (count) toast.info('Cleared finished downloads', `${count} ${count === 1 ? 'item' : 'items'} removed`)
+          }}
           onRemoveJob={setConfirmRemove}
           onPauseJob={pauseDownloadJob}
           onResumeJob={resumeDownloadJob}
@@ -1630,8 +1656,9 @@ export default function App() {
             }
             setJellyfinSignInOpen(false)
             setJellyfinSignInCallback(null)
+            toast.success('Signed in to Jellyfin')
           } catch (error) {
-            window.alert(error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
+            toast.error('Jellyfin sign-in failed', error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
           }
         }}
       />

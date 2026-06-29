@@ -1,4 +1,4 @@
-import { CheckCircle2, FolderDown, Loader2, Server, XCircle } from 'lucide-react'
+import { FolderDown, Loader2, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
@@ -11,6 +11,7 @@ import {
 } from '../lib/download-destinations'
 import type { DestinationSecrets } from '../lib/download-destinations'
 import { isTauriRuntime } from '../lib/api'
+import { toast } from '../lib/toast'
 import type { DownloadDestination, DownloadDestinationKind } from '../types'
 import { AppModal } from './AppModal'
 
@@ -36,9 +37,7 @@ export function DownloadDestinationWizard({
   const [makeDefault, setMakeDefault] = useState(Boolean(initial?.isDefault))
   const [testing, setTesting] = useState(false)
   const [testOk, setTestOk] = useState<boolean | null>(null)
-  const [testMessage, setTestMessage] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -48,9 +47,7 @@ export function DownloadDestinationWizard({
     setMakeDefault(Boolean(initial?.isDefault ?? true))
     setTesting(false)
     setTestOk(null)
-    setTestMessage('')
     setSaving(false)
-    setError('')
     if (initial) {
       void loadDestinationSecrets(initial).then((secrets) => {
         setSshPassword(secrets.sshPassword)
@@ -65,25 +62,21 @@ export function DownloadDestinationWizard({
       name: kind === 'local' ? defaultLocalDestinationName(isDesktop) : defaultRemoteDestinationName(),
     })
     setTestOk(null)
-    setTestMessage('')
     setStep('configure')
   }
 
   async function handleTest() {
     setTesting(true)
     setTestOk(null)
-    setTestMessage('')
-    setError('')
     try {
       const result = await testDestination(destination, { sshPassword }, isDesktop)
       setTestOk(result.ok)
-      setTestMessage(result.message)
-      if (!result.ok) setError(result.message)
+      if (result.ok) toast.success('Connection verified', destination.name)
+      else toast.error('Connection test failed', result.message)
     } catch (err) {
       setTestOk(false)
       const message = err instanceof Error ? err.message : 'Connection test failed.'
-      setTestMessage(message)
-      setError(message)
+      toast.error('Connection test failed', message)
     } finally {
       setTesting(false)
     }
@@ -91,13 +84,11 @@ export function DownloadDestinationWizard({
 
   async function handleSave() {
     setSaving(true)
-    setError('')
     try {
       const result = await testDestination(destination, { sshPassword }, isDesktop)
       setTestOk(result.ok)
-      setTestMessage(result.message)
       if (!result.ok) {
-        setError(result.message)
+        toast.error('Could not save destination', result.message)
         return
       }
       const next = {
@@ -111,7 +102,7 @@ export function DownloadDestinationWizard({
       await saveDestinationSecrets(next.id, { sshPassword })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save destination.')
+      toast.error('Could not save destination', err instanceof Error ? err.message : 'Could not save destination.')
     } finally {
       setSaving(false)
     }
@@ -292,13 +283,6 @@ export function DownloadDestinationWizard({
             </button>
           </div>
 
-          {testMessage ? (
-            <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] ${testOk ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'}`}>
-              {testOk ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <XCircle size={14} className="mt-0.5 shrink-0" />}
-              <span>{testMessage}</span>
-            </div>
-          ) : null}
-
           {testOk ? (
             <div className="space-y-3 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
               <label className="flex items-center gap-2 text-[12px]">
@@ -320,8 +304,6 @@ export function DownloadDestinationWizard({
               </button>
             </div>
           ) : null}
-
-          {error && !testMessage ? <p className="text-[11px] text-red-600 dark:text-red-300">{error}</p> : null}
         </div>
       ) : null}
     </AppModal>

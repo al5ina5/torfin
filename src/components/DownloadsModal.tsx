@@ -4,6 +4,7 @@ import { liveMetricsForJob, useLiveDownloadMetrics } from '../hooks/useLiveDownl
 import { bytesLabel, downloadStatusLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
 import type { DownloadJob, DownloadSort } from '../types'
 import { AppModal } from './AppModal'
+import { MoviePoster } from './MoviePoster'
 
 type DownloadsModalProps = {
   open: boolean
@@ -119,11 +120,17 @@ export function DownloadsModal({
               const title = status?.name ?? job.stream.title
               const stateLabel = downloadStatusLabel(job)
               const jellyfinReady = stateLabel === 'available in jellyfin'
+              const isResolving = !status && !job.error
               return (
                 <div key={status?.id || job.pendingId || `${job.movie.id}-${job.stream.title}`} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-2.5">
                   <div className="flex items-start gap-2">
-                    <div className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-md bg-[var(--mac-control)]">
-                      {isActive ? <Loader2 className="animate-spin text-[var(--mac-accent)]" size={14} /> : <HardDriveDownload size={14} />}
+                    <div className="relative mt-0.5 h-10 w-7 shrink-0 overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]">
+                      <MoviePoster src={job.movie.poster} iconSize={12} />
+                      {isActive || isResolving ? (
+                        <div className="absolute inset-0 grid place-items-center bg-black/40">
+                          <Loader2 className="animate-spin text-white" size={14} />
+                        </div>
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -210,26 +217,20 @@ export function DownloadsModal({
                   </div>
 
                   {status?.statusMessage ? (
-                    <div
-                      className={`ml-[52px] mt-2 rounded-md border px-2.5 py-2 text-[11px] leading-4 ${
-                        status.state === 'stalled'
-                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-100'
-                          : 'border-[var(--mac-border)] bg-[var(--mac-surface)] text-[var(--mac-secondary)]'
-                      }`}
-                    >
+                    <div className="ml-9 mt-2 rounded-md border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2.5 py-2 text-[11px] leading-4 text-[var(--mac-secondary)]">
                       <div>{status.statusMessage}</div>
                       {status.statusAction ? <div className="mt-1 font-medium">{status.statusAction}</div> : null}
                     </div>
                   ) : null}
 
                   {status?.state.startsWith('error:') ? (
-                    <div className="ml-[52px] mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] leading-4 text-red-600 dark:text-red-200">
-                      Download failed: {status.state.replace(/^error:/, '').replace(/^\d+\s*/, '') || 'Unknown error'}
+                    <div className="ml-9 mt-2 text-[11px] leading-4 text-[var(--mac-secondary)]">
+                      Failed · {status.state.replace(/^error:/, '').replace(/^\d+\s*/, '') || 'Unknown error'}
                     </div>
                   ) : null}
 
                   {job.error && !status ? (
-                    <div className="ml-[52px] mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] leading-4 text-red-600 dark:text-red-200">
+                    <div className="ml-9 mt-2 text-[11px] leading-4 text-[var(--mac-secondary)]">
                       {job.error}
                     </div>
                   ) : null}

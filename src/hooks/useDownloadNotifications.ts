@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { ensureNotificationPermission, showAppNotification } from '../lib/notifications'
+import { toast } from '../lib/toast'
 import type { DownloadJob } from '../types'
 
 type UseDownloadNotificationsArgs = {
@@ -25,12 +26,15 @@ export function useDownloadNotifications({ enabled, jobs }: UseDownloadNotificat
       if (job.status?.complete) {
         notifiedRef.current.add(id)
         showAppNotification('Downloaded', `${job.movie.name} finished downloading.`)
+        toast.success('Download complete', job.movie.name)
         return
       }
 
       if (job.status?.state.startsWith('error:') || (job.error && !job.status)) {
         notifiedRef.current.add(id)
         showAppNotification('Download failed', `${job.movie.name} could not finish downloading.`)
+        const detail = job.error || job.status?.state.replace(/^error:/, '').replace(/^\d+\s*/, '') || 'Unknown error'
+        toast.error('Download failed', `${job.movie.name}: ${detail}`)
       }
     })
   }, [enabled, jobs])

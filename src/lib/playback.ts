@@ -1,5 +1,5 @@
 import { isTauriRuntime, postApi } from './api'
-import type { MediaInfo } from '../types'
+import type { HlsTranscodeProgress, MediaInfo } from '../types'
 
 const BROWSER_PLAYABLE_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.m3u8', '.webm']
 const NON_BROWSER_EXTENSIONS = ['.mkv', '.avi']
@@ -64,6 +64,33 @@ export async function startHlsTranscode(
   return body.url
 }
 
+export async function getHlsTranscodeProgress(): Promise<HlsTranscodeProgress> {
+  const idle: HlsTranscodeProgress = {
+    active: false,
+    segmentCount: 0,
+    playlistReady: false,
+    transcodedSeconds: 0,
+    processRunning: false,
+  }
+
+  if (isTauriRuntime()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      return await invoke<HlsTranscodeProgress>('get_hls_transcode_progress')
+    } catch {
+      return idle
+    }
+  }
+
+  try {
+    const response = await fetch('/api/hls-transcode-progress')
+    if (!response.ok) return idle
+    return await response.json() as HlsTranscodeProgress
+  } catch {
+    return idle
+  }
+}
+
 export function needsTranscodeFallback(sourceUrl: string, playbackUrl: string) {
   return Boolean(sourceUrl) && Boolean(playbackUrl) && playbackUrl === sourceUrl
 }
@@ -73,10 +100,6 @@ export function shouldTranscodeDirectly(sourceUrl: string, audioIndex: number | 
   if (!isBrowserPlayableUrl(sourceUrl)) return true
   if (!isTauriRuntime() && isTorboxCdnUrl(sourceUrl)) return true
   return false
-}
-
-export function canRetryPlaybackWithTranscode(sourceUrl: string) {
-  return Boolean(sourceUrl?.trim())
 }
 
 export function isRetriablePlaybackError(error: unknown) {
@@ -90,6 +113,7 @@ export function isRetriablePlaybackError(error: unknown) {
     || message.includes('Upstream returned HTTP')
   )
 }
+
 export function playbackUnavailableMessage() {
   if (isTauriRuntime()) {
     return 'This stream is not playable. Install FFmpeg (brew install ffmpeg) or try another result.'

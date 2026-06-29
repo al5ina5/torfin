@@ -1,7 +1,8 @@
-import { CheckCircle2, Loader2, Tv, XCircle } from 'lucide-react'
+import { Loader2, Tv } from 'lucide-react'
 import { useState } from 'react'
 
 import { testJellyfinConnection } from '../lib/download-destinations'
+import { toast } from '../lib/toast'
 import type { DownloadConfig } from '../types'
 
 type JellyfinIntegrationSettingsProps = {
@@ -20,20 +21,14 @@ export function JellyfinIntegrationSettings({
   onOpenJellyfinSignIn,
 }: JellyfinIntegrationSettingsProps) {
   const [testing, setTesting] = useState(false)
-  const [testOk, setTestOk] = useState<boolean | null>(null)
-  const [testMessage, setTestMessage] = useState('')
 
   async function handleTest() {
     setTesting(true)
-    setTestOk(null)
-    setTestMessage('')
     try {
       const result = await testJellyfinConnection(downloadConfig.jellyfinUrl, jellyfinApiKey)
-      setTestOk(true)
-      setTestMessage(`Connected to ${result.name} (${result.version})`)
+      toast.success('Jellyfin connected', `${result.name} (${result.version})`)
     } catch (error) {
-      setTestOk(false)
-      setTestMessage(error instanceof Error ? error.message : 'Connection failed.')
+      toast.error('Jellyfin connection failed', error instanceof Error ? error.message : 'Connection failed.')
     } finally {
       setTesting(false)
     }
@@ -95,12 +90,7 @@ export function JellyfinIntegrationSettings({
         </div>
       </div>
 
-      {testMessage ? (
-        <div className={`mt-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] ${testOk ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'}`}>
-          {testOk ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <XCircle size={14} className="mt-0.5 shrink-0" />}
-          <span>{testMessage}</span>
-        </div>
-      ) : configured ? (
+      {configured ? (
         <p className="mt-3 text-[10px] text-[var(--mac-tertiary)]">Jellyfin configured — library lookup and refresh are available.</p>
       ) : null}
 

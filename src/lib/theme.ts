@@ -19,3 +19,10 @@ export function applyThemeMode(mode: ThemeMode) {
 export function initTheme() {
   applyThemeMode(loadThemeMode())
 }
+
+export function resolveThemeMode(mode: ThemeMode = loadThemeMode()): 'light' | 'dark' {
+  if (mode === 'dark') return 'dark'
+  if (mode === 'light') return 'light'
+  if (typeof window === 'undefined') return 'light'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}

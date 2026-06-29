@@ -55,12 +55,13 @@ function destroyPlayer(player: ReturnType<typeof videojs>, host: HTMLDivElement 
 
 function buildPlayerOptions(autoPlay: boolean, url: string) {
   const type = sourceType(url)
+  const isHls = type === 'application/x-mpegURL'
   return {
     autoplay: autoPlay,
     controls: true,
     fill: true,
     fluid: false,
-    liveui: false,
+    liveui: isHls,
     responsive: false,
     playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
     controlBar: {
@@ -100,7 +101,7 @@ function applyStartAt(player: ReturnType<typeof videojs>, startAt: number | null
     return
   }
 
-  player.one('loadedmetadata', seek)
+  player.one('canplay', seek)
 }
 
 registerAirPlayButton()

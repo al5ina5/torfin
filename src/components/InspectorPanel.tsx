@@ -3,6 +3,7 @@ import { ChevronLeft, Download, ExternalLink, Heart, Loader2 } from 'lucide-reac
 import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
 import type { JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
 import { StreamResults } from './StreamResults'
+import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
 import { VideoPlayer } from './VideoPlayer'
 
 type InspectorPanelProps = {
@@ -29,13 +30,11 @@ type InspectorPanelProps = {
   compactStreams: StreamResult[]
   profileOptions: Array<{ id: ResultProfile; label: string; description?: string }>
   loadingStreams: boolean
-  streamErrors: string[]
   streamEmptyMessage: string
   resultProfile: ResultProfile
   resultsExpanded: boolean
   playbackUrl: string
   playbackTitle: string
-  playbackError: string
   playbackStatus: string
   playbackStartAt: number | null
   mediaInfo: MediaInfo | null
@@ -85,13 +84,11 @@ function InspectorContent({
   compactStreams,
   profileOptions,
   loadingStreams,
-  streamErrors,
   streamEmptyMessage,
   resultProfile,
   resultsExpanded,
   playbackUrl,
   playbackTitle,
-  playbackError,
   playbackStatus,
   playbackStartAt,
   mediaInfo,
@@ -317,7 +314,7 @@ function InspectorContent({
           </div>
         ) : null}
 
-        {playbackUrl || playbackError || playbackStatus || nextEpisodePrompt ? (
+        {playbackUrl || playbackStatus || nextEpisodePrompt ? (
           <section className="overflow-hidden rounded-lg border border-black/20 bg-black shadow-lg">
             {playbackUrl ? (
               <VideoPlayer
@@ -337,17 +334,7 @@ function InspectorContent({
               />
             ) : null}
             {playbackStatus ? (
-              <div className="grid aspect-video w-full place-items-center bg-black text-white">
-                <div className="flex items-center gap-2 text-[13px] font-semibold">
-                  <Loader2 className="animate-spin" size={16} />
-                  {playbackStatus}
-                </div>
-              </div>
-            ) : null}
-            {playbackError ? (
-              <div className="border-t border-white/10 bg-black px-3 py-2">
-                <p className="rounded-md bg-red-500/20 px-2 py-1.5 text-[11px] leading-4 text-red-100">{playbackError}</p>
-              </div>
+              <PlaybackStatusOverlay status={playbackStatus} mediaInfo={mediaInfo} />
             ) : null}
             {nextEpisodePrompt ? (
               <div className="flex items-center justify-between gap-3 border-t border-white/10 bg-black/90 px-3 py-2.5">
@@ -377,7 +364,6 @@ function InspectorContent({
           resultsExpanded={resultsExpanded}
           onToggleExpanded={onToggleResultsExpanded}
           emptyMessage={streamEmptyMessage}
-          streamErrors={streamErrors}
           onRefresh={onRefreshStreams}
           resolvingKey={resolvingKey}
           downloadingKey={downloadingKey}

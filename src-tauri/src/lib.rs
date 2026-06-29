@@ -14,6 +14,7 @@ pub fn run() {
             torbox::get_torbox_account,
             torbox::resolve_torbox_stream,
             transcode::inspect_media,
+            transcode::get_hls_transcode_progress,
             transcode::start_hls_transcode,
             downloads::cancel_remote_url_download,
             downloads::start_qbittorrent_download,
