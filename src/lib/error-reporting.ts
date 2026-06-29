@@ -82,8 +82,12 @@ export function initClientErrorReporting() {
   reportingInstalled = true
 
   window.addEventListener('error', (event) => {
-    const target = event.target as HTMLElement | null
-    if (target && target !== window && (target.tagName === 'IMG' || target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+    const target = event.target
+    if (
+      target instanceof HTMLElement
+      && target.tagName !== 'BODY'
+      && (target.tagName === 'IMG' || target.tagName === 'SCRIPT' || target.tagName === 'LINK')
+    ) {
       reportClientError({
         kind: 'error',
         message: `Resource failed: ${(target as HTMLImageElement).src || (target as HTMLScriptElement).src || 'unknown'}`,

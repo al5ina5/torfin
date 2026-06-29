@@ -79,6 +79,23 @@ if (!existsSync(iconPath)) {
 
 mkdirSync(splashDir, { recursive: true })
 
+const expectedOutputs = []
+for (const theme of Object.keys(THEMES)) {
+  for (const { width, height } of SCREENS) {
+    expectedOutputs.push(join(splashDir, `${theme}-${width}x${height}.png`))
+  }
+}
+
+if (expectedOutputs.every((path) => existsSync(path))) {
+  console.log(`Splash images already present in public/splash/ (${expectedOutputs.length} files)`)
+  process.exit(0)
+}
+
+if (spawnSync('convert', ['-version'], { encoding: 'utf8' }).status !== 0) {
+  console.error('ImageMagick (`convert`) is required to generate missing PWA splash images.')
+  process.exit(1)
+}
+
 for (const [theme, color] of Object.entries(THEMES)) {
   for (const { width, height } of SCREENS) {
     const iconSize = Math.round(Math.min(width, height) * 0.22)

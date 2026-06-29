@@ -23,9 +23,9 @@ ENV TORBOX_DOWNLOAD_DIR=/media/movies
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.mjs ./server.mjs
 COPY --from=build /app/server ./server
-
-USER node
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3020
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD curl -f "http://127.0.0.1:3020/api/health" || exit 1
-CMD ["node", "server.mjs"]
+ENTRYPOINT ["docker-entrypoint.sh"]

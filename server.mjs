@@ -91,11 +91,9 @@ const serverApiKey = String(process.env.TORBOX_SERVER_API_KEY || '').trim()
 const isProduction = process.env.NODE_ENV === 'production'
 const currentReleaseYear = new Date().getUTCFullYear()
 
-if (isProduction && !serverApiKey) {
-  console.error('TORBOX_SERVER_API_KEY is required when NODE_ENV=production. Refusing to start.')
-  process.exit(1)
-} else if (!isProduction && !serverApiKey) {
-  console.warn('TORBOX_SERVER_API_KEY is not set; API routes are open in non-production mode.')
+if (!serverApiKey) {
+  const mode = isProduction ? 'production' : 'non-production'
+  console.warn(`TORBOX_SERVER_API_KEY is not set; API routes are open (${mode}). Set a key before exposing Torfin to a network.`)
 }
 
 mkdirSync(dataDir, { recursive: true })
