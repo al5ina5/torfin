@@ -147,6 +147,11 @@ Add these **repository secrets** in GitHub (Settings → Secrets → Actions):
 | `DEPLOY_REMOTE_DIR` | (optional) Remote path, default `~/torfin` |
 | `DEPLOY_PORT` | (optional) Health check port, default `3020` |
 | `DEPLOY_URL` | (optional) Full health URL override |
+| `DEPLOY_DOCKER_USER` | (optional) Container user:group, e.g. `14:staff` if your data dir is not owned by `1000:1000` |
+| `DEPLOY_LEGACY_DATA_DIR` | (optional) Existing data directory to reuse |
+| `DEPLOY_ENV_FILE` | (optional) Path to server `jellyfin.env` on the host |
+| `DEPLOY_MEDIA_PATH` | (optional) Host path mounted as `/media/movies` in the container |
+| `DEPLOY_LEGACY_PROJECT` | (optional) Old container name to remove before starting Torfin |
 
 Pushing to `main` runs tests, builds, and deploys when secrets are configured.
 

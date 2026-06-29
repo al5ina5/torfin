@@ -48,4 +48,9 @@ jobs:
           DEPLOY_REMOTE_DIR: ${{ secrets.DEPLOY_REMOTE_DIR || '~/torfin' }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '3020' }}
           DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+          DEPLOY_LEGACY_DATA_DIR: ${{ secrets.DEPLOY_LEGACY_DATA_DIR }}
+          DEPLOY_ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
+          DEPLOY_MEDIA_PATH: ${{ secrets.DEPLOY_MEDIA_PATH }}
+          DEPLOY_LEGACY_PROJECT: ${{ secrets.DEPLOY_LEGACY_PROJECT }}
+          DEPLOY_DOCKER_USER: ${{ secrets.DEPLOY_DOCKER_USER }}
         run: node scripts/deploy-remote.mjs
