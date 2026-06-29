@@ -114,8 +114,8 @@ export function DownloadsModal({
               const displaySpeed = live?.speed ?? status?.speed ?? 0
               const displayEta = live?.eta ?? status?.eta ?? -1
               const displayDownloaded = live?.downloaded ?? status?.downloaded ?? 0
-              const isActive = isActiveDownloadJob(job) && !job.paused
-              const isPaused = Boolean(job.paused && isActiveDownloadJob(job))
+              const isActive = isActiveDownloadJob(job) && !job.paused && status?.state !== 'paused'
+              const isPaused = Boolean((job.paused || status?.state === 'paused') && isActiveDownloadJob(job))
               const isStalled = status?.state === 'stalled'
               const title = status?.name ?? job.stream.title
               const stateLabel = downloadStatusLabel(job)
@@ -195,6 +195,10 @@ export function DownloadsModal({
                             </span>
                             {status.complete ? (
                               <span>{status.size > 0 ? bytesLabel(status.size) : bytesLabel(status.downloaded)}</span>
+                            ) : isPaused ? (
+                              <span>
+                                {bytesLabel(status.downloaded)} / {status.size > 0 ? bytesLabel(status.size) : 'Unknown'}
+                              </span>
                             ) : (
                               <>
                                 <span>{bytesLabel(displaySpeed)}/s</span>

@@ -45,6 +45,7 @@ import {
   buildPollConfig,
   defaultDownloadConfig,
   dedupeDownloadJobs,
+  downloadJobKey,
   downloadSidebarSummary,
   isActiveDownloadJob,
   localPayload,
@@ -214,9 +215,11 @@ export default function App() {
   const autoPlayedStreamKeyRef = useRef<string | null>(null)
   const playbackGenerationRef = useRef(0)
   const playbackRecoveryCountRef = useRef(0)
+  const lastPlaybackErrorRef = useRef('')
   const activePlaybackStreamRef = useRef<{ stream: StreamResult; index: number } | null>(null)
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
   const startupSyncedRef = useRef(false)
+  const dismissedDownloadIdsRef = useRef(new Set<string>())
 
   const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
   const {
@@ -533,7 +536,10 @@ export default function App() {
     }
   }, [debouncedQuery, preferences.searchHistoryEnabled])
   useEffect(() => { setStreams(streamData?.streams || []); setStreamErrors([...(streamData?.errors || []), ...(streamError ? [streamError instanceof Error ? streamError.message : 'Stream lookup failed'] : [])]) }, [streamData, streamError])
-  useEffect(() => { if (serverStatuses) setDownloadJobs((current) => mergeServerDownloadJobs(current, serverStatuses)) }, [serverStatuses])
+  useEffect(() => {
+    if (!serverStatuses) return
+    setDownloadJobs((current) => mergeServerDownloadJobs(current, serverStatuses, dismissedDownloadIdsRef.current))
+  }, [serverStatuses])
   useEffect(() => { saveStoredJson(STORAGE_KEYS.plugins, plugins); saveStoredJson(STORAGE_KEYS.preferences, preferences); saveStoredJson(STORAGE_KEYS.downloadConfig, downloadConfig); saveStoredJson(STORAGE_KEYS.downloadJobs, downloadJobs); saveStoredJson(STORAGE_KEYS.downloadSort, downloadSort); saveStoredJson(STORAGE_KEYS.layout, layout) }, [downloadConfig, downloadJobs, downloadSort, layout, plugins, preferences])
   useEffect(() => { saveStoredString(STORAGE_KEYS.contentType, contentType) }, [contentType])
   useEffect(() => { saveStoredString(STORAGE_KEYS.lastCatalogId, catalogId) }, [catalogId])
@@ -892,7 +898,7 @@ export default function App() {
 
     if (playbackRecoveryCountRef.current >= 1) {
       setPlaybackUrl('')
-      setPlaybackError('Playback failed. Try playing again or choose another result.')
+      setPlaybackError(lastPlaybackErrorRef.current || 'Playback failed. Try playing again or choose another result.')
       setPlaybackStatus('')
       return
     }
@@ -917,7 +923,9 @@ export default function App() {
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl('')
-      setPlaybackError(error instanceof Error ? error.message : playbackUnavailableMessage())
+      const message = error instanceof Error ? error.message : playbackUnavailableMessage()
+      lastPlaybackErrorRef.current = message
+      setPlaybackError(message)
       setPlaybackStatus('')
     }
   }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex, torboxApiKey])
@@ -980,7 +988,9 @@ export default function App() {
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackStatus('')
-      setPlaybackError(error instanceof Error ? error.message : 'Could not start transcoded playback.')
+      const message = error instanceof Error ? error.message : 'Could not start transcoded playback.'
+      lastPlaybackErrorRef.current = message
+      setPlaybackError(message)
     }
   }
 
@@ -1162,28 +1172,71 @@ export default function App() {
   }
 
   async function cancelDownloadJob(job: DownloadJob) {
-    const id = job.status?.id ?? job.pendingId
+    const id = downloadJobKey(job)
     const name = job.movie.name
-    setDownloadJobs((current) => current.filter((item) => item !== job))
+    if (id) dismissedDownloadIdsRef.current.add(id)
+    setDownloadJobs((current) => current.filter((item) => downloadJobKey(item) !== id))
     toast.info('Download removed', name)
     if (!id) return
-    if (tauri) {
-      const mode = job.pollConfig?.mode
-      await import('@tauri-apps/api/core').then(({ invoke }) => {
-        if (mode === 'local') return invoke('cancel_local_url_download', { id })
-        return invoke('cancel_remote_url_download', { id })
-      }).catch(() => undefined)
-    } else if (!job.status?.complete) {
-      await fetch(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined)
+    try {
+      if (tauri) {
+        const mode = job.pollConfig?.mode
+        await import('@tauri-apps/api/core').then(({ invoke }) => {
+          if (mode === 'local') return invoke('cancel_local_url_download', { id })
+          return invoke('cancel_remote_url_download', { id })
+        })
+      } else {
+        await fetch(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      }
+    } catch {
+      dismissedDownloadIdsRef.current.delete(id)
     }
   }
 
-  function pauseDownloadJob(job: DownloadJob) {
-    setDownloadJobs((current) => current.map((entry) => (entry === job ? { ...entry, paused: true } : entry)))
+  async function pauseDownloadJob(job: DownloadJob) {
+    const id = downloadJobKey(job)
+    if (!id) return
+    setDownloadJobs((current) =>
+      current.map((entry) => (downloadJobKey(entry) === id ? { ...entry, paused: true } : entry)),
+    )
+    try {
+      if (tauri) {
+        const mode = job.pollConfig?.mode
+        if (mode === 'local') {
+          await import('@tauri-apps/api/core').then(({ invoke }) => invoke('pause_local_url_download', { id }))
+        }
+      } else {
+        await postApi(`/api/downloads/${encodeURIComponent(id)}/pause`, {})
+      }
+    } catch {
+      setDownloadJobs((current) =>
+        current.map((entry) => (downloadJobKey(entry) === id ? { ...entry, paused: false } : entry)),
+      )
+      toast.error('Could not pause download', job.movie.name)
+    }
   }
 
-  function resumeDownloadJob(job: DownloadJob) {
-    setDownloadJobs((current) => current.map((entry) => (entry === job ? { ...entry, paused: false } : entry)))
+  async function resumeDownloadJob(job: DownloadJob) {
+    const id = downloadJobKey(job)
+    if (!id) return
+    setDownloadJobs((current) =>
+      current.map((entry) => (downloadJobKey(entry) === id ? { ...entry, paused: false } : entry)),
+    )
+    try {
+      if (tauri) {
+        const mode = job.pollConfig?.mode
+        if (mode === 'local') {
+          await import('@tauri-apps/api/core').then(({ invoke }) => invoke('resume_local_url_download', { id }))
+        }
+      } else {
+        await postApi(`/api/downloads/${encodeURIComponent(id)}/resume`, {})
+      }
+    } catch {
+      setDownloadJobs((current) =>
+        current.map((entry) => (downloadJobKey(entry) === id ? { ...entry, paused: true } : entry)),
+      )
+      toast.error('Could not resume download', job.movie.name)
+    }
   }
 
   function handleToggleWatchlist(movie: Movie) {

@@ -25,6 +25,8 @@ pub fn run() {
             downloads::start_local_url_download,
             downloads::get_local_url_download,
             downloads::cancel_local_url_download,
+            downloads::pause_local_url_download,
+            downloads::resume_local_url_download,
             jellyfin::lookup_jellyfin_library,
             jellyfin::test_jellyfin,
             jellyfin::authenticate_jellyfin,

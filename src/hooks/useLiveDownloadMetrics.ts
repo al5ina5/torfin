@@ -36,7 +36,7 @@ export function useLiveDownloadMetrics(jobs: DownloadJob[]) {
     for (const job of jobs) {
       const id = jobKey(job)
       const status = job.status
-      if (!id || !status || !isActiveDownloadJob(job) || job.paused) continue
+      if (!id || !status || !isActiveDownloadJob(job) || job.paused || status.state === 'paused') continue
       activeIds.add(id)
       snapshotsRef.current.set(id, {
         downloaded: status.downloaded,
@@ -53,7 +53,7 @@ export function useLiveDownloadMetrics(jobs: DownloadJob[]) {
     }
   }, [jobs])
 
-  const hasLiveJobs = jobs.some((job) => isActiveDownloadJob(job) && !job.paused && (job.status?.speed ?? 0) > 0)
+  const hasLiveJobs = jobs.some((job) => isActiveDownloadJob(job) && !job.paused && job.status?.state !== 'paused' && (job.status?.speed ?? 0) > 0)
 
   useEffect(() => {
     if (!hasLiveJobs) return

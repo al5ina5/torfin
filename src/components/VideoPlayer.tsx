@@ -150,7 +150,11 @@ export function VideoPlayer({
 
     const handleError = () => {
       if (ignoreErrorsRef.current) return
-      onErrorRef.current?.()
+      const delay = url.includes('.m3u8') ? 5000 : 250
+      window.setTimeout(() => {
+        if (ignoreErrorsRef.current) return
+        if (player.error()) onErrorRef.current?.()
+      }, delay)
     }
     const handleTimeUpdate = () => {
       const current = player.currentTime()

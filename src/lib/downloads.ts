@@ -50,7 +50,7 @@ export function jellyfinSyncConfigured(job: DownloadJob) {
 export function downloadStatusLabel(job: DownloadJob) {
   const status = job.status
   if (!status) return job.error ? 'failed' : 'queued'
-  if (job.paused && isActiveDownloadJob(job)) return 'paused'
+  if ((job.paused || status.state === 'paused') && isActiveDownloadJob(job)) return 'paused'
   if (status.state.startsWith('error:')) return 'failed'
   if (status.state === 'stalled') return 'stalled'
   if (!status.complete) {
@@ -76,10 +76,14 @@ export function sortDownloadJobs(jobs: DownloadJob[], sort: DownloadSort) {
   })
 }
 
+export function downloadJobKey(job: DownloadJob) {
+  return job.status?.id ?? job.pendingId ?? ''
+}
+
 export function dedupeDownloadJobs(jobs: DownloadJob[]) {
   const seen = new Set<string>()
   return jobs.filter((job) => {
-    const key = job.status?.id ?? job.pendingId ?? `${job.movie.id}-${job.stream.pluginName}-${job.stream.infoHash ?? job.stream.url ?? job.stream.title}`
+    const key = downloadJobKey(job) || `${job.movie.id}-${job.stream.pluginName}-${job.stream.infoHash ?? job.stream.url ?? job.stream.title}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
@@ -112,19 +116,35 @@ export function downloadJobFromStatus(status: DownloadStatus): DownloadJob {
   }
 }
 
-export function mergeServerDownloadJobs(current: DownloadJob[], statuses: DownloadStatus[]) {
-  const byId = new Map(statuses.map((status) => [status.id, status]))
+export function mergeServerDownloadJobs(
+  current: DownloadJob[],
+  statuses: DownloadStatus[],
+  excludedIds: ReadonlySet<string> = new Set(),
+) {
+  const byId = new Map(statuses.filter((status) => !excludedIds.has(status.id)).map((status) => [status.id, status]))
   const merged = current
     .filter((job) => {
-      const id = job.status?.id ?? job.pendingId
+      const id = downloadJobKey(job)
+      if (id && excludedIds.has(id)) return false
       return !id || byId.has(id) || !job.status
     })
     .map((job) => {
-      const id = job.status?.id ?? job.pendingId
+      const id = downloadJobKey(job)
       const status = id ? byId.get(id) : undefined
       if (!status) return withDownloadTimestamp(job)
       byId.delete(status.id)
-      return withDownloadTimestamp({ ...job, pendingId: status.id, status, error: status.state.startsWith('error:') ? '' : job.error })
+      const paused = job.paused || status.state === 'paused'
+      const mergedStatus =
+        job.paused && status.state !== 'paused' && job.status
+          ? { ...status, progress: job.status.progress, downloaded: job.status.downloaded, speed: 0, eta: -1, state: 'paused' }
+          : status
+      return withDownloadTimestamp({
+        ...job,
+        pendingId: status.id,
+        paused,
+        status: mergedStatus,
+        error: status.state.startsWith('error:') ? '' : job.error,
+      })
     })
   for (const status of byId.values()) merged.push(downloadJobFromStatus(status))
   return dedupeDownloadJobs(merged)

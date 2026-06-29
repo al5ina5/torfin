@@ -1188,6 +1188,40 @@ async function resumeIncompleteDownloads() {
   saveJobs()
 }
 
+async function pauseDownload(id) {
+  const job = jobs[id]
+  if (!job || job.complete) return { ok: false }
+  if (job.gid) {
+    await ensureAria2Daemon()
+    await aria2Rpc('pause', [job.gid])
+  }
+  const process = activeProcesses.get(id)
+  if (process) process.kill('SIGSTOP')
+  job.paused = true
+  job.state = 'paused'
+  saveJobs()
+  appendJobLog(job, 'download.paused', { gid: job.gid || '' })
+  logEvent('download.paused', { id })
+  return { ok: true }
+}
+
+async function resumeDownload(id) {
+  const job = jobs[id]
+  if (!job || job.complete) return { ok: false }
+  if (job.gid) {
+    await ensureAria2Daemon()
+    await aria2Rpc('unpause', [job.gid])
+  }
+  const process = activeProcesses.get(id)
+  if (process) process.kill('SIGCONT')
+  job.paused = false
+  job.state = job.gid ? 'downloading' : 'downloading'
+  saveJobs()
+  appendJobLog(job, 'download.resumed', { gid: job.gid || '' })
+  logEvent('download.resumed', { id })
+  return { ok: true }
+}
+
 async function deleteDownload(id) {
   const job = jobs[id]
   if (!job) return { ok: true }
@@ -1442,7 +1476,7 @@ async function handleApi(request, response, pathname) {
     return
   }
   if (pathname.startsWith('/api/hls-transcode/') && request.method === 'GET') {
-    if (serveHlsTranscodeFile(pathname, response)) return
+    if (await serveHlsTranscodeFile(pathname, response)) return
     sendError(response, 404, 'Transcode session not found')
     return
   }
@@ -1469,6 +1503,16 @@ async function handleApi(request, response, pathname) {
     if (!job?.logPath || !existsSync(job.logPath)) throw new Error('No log is available for this download.')
     response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
     createReadStream(job.logPath).pipe(response)
+    return
+  }
+  if (pathname.startsWith('/api/downloads/') && pathname.endsWith('/pause') && request.method === 'POST') {
+    const id = decodeURIComponent(pathname.split('/').at(-2) || '')
+    sendJson(response, 200, await pauseDownload(id))
+    return
+  }
+  if (pathname.startsWith('/api/downloads/') && pathname.endsWith('/resume') && request.method === 'POST') {
+    const id = decodeURIComponent(pathname.split('/').at(-2) || '')
+    sendJson(response, 200, await resumeDownload(id))
     return
   }
   if (pathname.startsWith('/api/downloads/') && request.method === 'DELETE') {

@@ -860,6 +860,8 @@ struct LocalDownloadMeta {
     last_seen: std::time::Instant,
     complete: bool,
     error: String,
+    pid: Option<u32>,
+    paused: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -924,6 +926,7 @@ fn start_local_url_download_inner(
         .spawn()
         .map_err(|error| format!("Could not start wget: {error}"))?;
 
+    let pid = child.id();
     let id_for_thread = id.clone();
     std::thread::spawn(move || {
         let status = child.wait();
@@ -933,6 +936,7 @@ fn start_local_url_download_inner(
             .ok();
         if let Some(mut downloads) = downloads {
             if let Some(meta) = downloads.get_mut(&id_for_thread) {
+                meta.pid = None;
                 match status {
                     Ok(exit) if exit.success() => {
                         let _ = std::fs::rename(&meta.partial_path, &meta.target_path);
@@ -958,6 +962,8 @@ fn start_local_url_download_inner(
         last_seen: std::time::Instant::now(),
         complete: false,
         error: String::new(),
+        pid: Some(pid),
+        paused: false,
     };
     LOCAL_DOWNLOADS
         .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
@@ -1002,13 +1008,17 @@ fn get_local_url_download_inner(id: String) -> Result<DownloadStatus, String> {
     let downloaded = file_size(&meta.partial_path).max(file_size(&meta.target_path));
     let now = std::time::Instant::now();
     let elapsed = now.duration_since(meta.last_seen).as_secs_f64().max(0.001);
-    let speed = if downloaded >= meta.last_downloaded {
+    let speed = if meta.paused {
+        0
+    } else if downloaded >= meta.last_downloaded {
         ((downloaded - meta.last_downloaded) as f64 / elapsed) as i64
     } else {
         0
     };
-    meta.last_downloaded = downloaded;
-    meta.last_seen = now;
+    if !meta.paused {
+        meta.last_downloaded = downloaded;
+        meta.last_seen = now;
+    }
 
     if meta.complete {
         return Ok(DownloadStatus {
@@ -1075,9 +1085,15 @@ fn get_local_url_download_inner(id: String) -> Result<DownloadStatus, String> {
             .unwrap_or("download")
             .to_string(),
         progress,
-        state: "downloading".to_string(),
+        state: if meta.paused {
+            "paused".to_string()
+        } else {
+            "downloading".to_string()
+        },
         speed,
-        eta: if speed > 0 && size > downloaded {
+        eta: if meta.paused {
+            -1
+        } else if speed > 0 && size > downloaded {
             ((size - downloaded) as f64 / speed as f64) as i64
         } else {
             -1
@@ -1090,6 +1106,64 @@ fn get_local_url_download_inner(id: String) -> Result<DownloadStatus, String> {
         status_path: None,
         complete: false,
     })
+}
+
+#[tauri::command]
+pub(crate) async fn pause_local_url_download(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || pause_local_url_download_inner(id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn pause_local_url_download_inner(id: String) -> Result<(), String> {
+    let mut downloads = LOCAL_DOWNLOADS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "Could not lock local download state.".to_string())?;
+    let meta = downloads
+        .get_mut(&id)
+        .ok_or_else(|| "This local download is not being tracked.".to_string())?;
+    if let Some(pid) = meta.pid {
+        signal_process(pid, "STOP")?;
+    }
+    meta.paused = true;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn resume_local_url_download(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || resume_local_url_download_inner(id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn resume_local_url_download_inner(id: String) -> Result<(), String> {
+    let mut downloads = LOCAL_DOWNLOADS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "Could not lock local download state.".to_string())?;
+    let meta = downloads
+        .get_mut(&id)
+        .ok_or_else(|| "This local download is not being tracked.".to_string())?;
+    if let Some(pid) = meta.pid {
+        signal_process(pid, "CONT")?;
+    }
+    meta.paused = false;
+    meta.last_seen = std::time::Instant::now();
+    meta.last_downloaded = file_size(&meta.partial_path).max(file_size(&meta.target_path));
+    Ok(())
+}
+
+fn signal_process(pid: u32, signal: &str) -> Result<(), String> {
+    let status = std::process::Command::new("kill")
+        .args(["-", signal, &pid.to_string()])
+        .status()
+        .map_err(|error| format!("Could not signal download process: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Could not pause download process {pid}."))
+    }
 }
 
 #[tauri::command]
