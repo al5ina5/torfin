@@ -50,7 +50,7 @@ export function DownloadsModal({
       icon={<HardDriveDownload size={15} />}
       onClose={onClose}
       className="download-modal-panel"
-      bodyClassName="flex min-h-0 flex-1 flex-col gap-2 p-3"
+      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden gap-2 p-3"
       zClassName="z-40"
     >
       <div className="flex shrink-0 items-center justify-between gap-3 px-1 text-[11px] text-[var(--mac-secondary)]">

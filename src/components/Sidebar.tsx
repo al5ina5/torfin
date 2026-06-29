@@ -125,7 +125,7 @@ function SidebarContent({
         </div>
       </div>
 
-      <nav className="modal-scroll flex-1 px-2">
+      <nav className="modal-scroll min-h-0 flex-1 px-2">
         {groups.map((group) => (
           <div key={group} className="mb-4">
             <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">
@@ -292,7 +292,7 @@ export function Sidebar({
         icon={<Clapperboard size={15} />}
         onClose={onClose ?? (() => {})}
         zClassName="z-40"
-        bodyClassName="flex min-h-0 flex-col p-0"
+        bodyClassName="flex min-h-0 flex-col overflow-hidden p-0"
         titleId="app-sidebar-title"
       >
         <SidebarContent mobile onClose={onClose} {...props} />
