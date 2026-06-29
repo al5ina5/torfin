@@ -88,12 +88,12 @@ async function main() {
   })
 
   await step('deep link movie', async () => {
-    await page.goto(new URL('movie/tt0111161', BASE_URL).toString(), { waitUntil: 'networkidle' })
+    await page.goto(new URL('movie/tt0111161', BASE_URL).toString(), { waitUntil: 'domcontentloaded' })
     await page.getByText('Stream Results').first().waitFor({ timeout: 20000 })
   })
 
   await step('deep link series episode', async () => {
-    await page.goto(new URL('series/tt0944947/1/1', BASE_URL).toString(), { waitUntil: 'networkidle' })
+    await page.goto(new URL('series/tt0944947/1/1', BASE_URL).toString(), { waitUntil: 'domcontentloaded' })
     await page.getByText('Stream Results').first().waitFor({ timeout: 20000 })
   })
 
