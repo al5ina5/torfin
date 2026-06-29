@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:web-downloads": "node scripts/test-web-downloads.mjs",
     "test:ui": "node scripts/ui-smoke-test.mjs",
-    "thinktower": "node scripts/deploy-thinktower.mjs"
+    "thinktower": "node scripts/deploy-thinktower.mjs",
+    "install:hooks": "bash scripts/install-git-hooks.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

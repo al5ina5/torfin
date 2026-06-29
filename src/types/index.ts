@@ -114,6 +114,25 @@ export type TorboxAccountSummary = {
   cachedTorrents?: number
 }
 
+export type DownloadDestinationKind = 'local' | 'remote-jellyfin'
+
+export type DownloadDestination = {
+  id: string
+  name: string
+  kind: DownloadDestinationKind
+  isDefault: boolean
+  moviesPath: string
+  tvPath: string
+  jellyfinUrl: string
+  refreshOnComplete: boolean
+  sshHost: string
+  sshPort: number
+  sshUsername: string
+  lastTestedAt?: string
+  lastTestOk?: boolean
+  lastTestMessage?: string
+}
+
 export type DownloadConfig = {
   jellyfinUrl: string
   jellyfinApiKey: string
@@ -130,6 +149,8 @@ export type DownloadConfig = {
   savePath: string
   category: string
   refreshJellyfinOnComplete: boolean
+  activeDestinationId: string
+  destinations: DownloadDestination[]
 }
 
 export type DownloadStatus = {
@@ -174,6 +195,34 @@ export type DownloadJob = {
   error?: string
   jellyfinRefreshed?: boolean
   paused?: boolean
+  destinationId?: string
+  destinationName?: string
+  pollConfig?: DownloadPollConfig
+}
+
+export type DownloadPollConfig = {
+  mode: 'local' | 'ssh' | 'qbittorrent'
+  ssh?: {
+    host: string
+    username: string
+    password: string | null
+    savePath: string
+  }
+  local?: {
+    savePath: string
+  }
+  qbittorrent?: {
+    baseUrl: string
+    username: string
+    password: string
+    savePath: string | null
+    category: string | null
+  }
+  jellyfin?: {
+    baseUrl: string
+    apiKey: string
+    refreshOnComplete: boolean
+  }
 }
 
 export type PlaybackProgress = {

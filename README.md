@@ -134,26 +134,34 @@ npm run thinktower
 
 This builds the app, rsyncs to the remote host, rebuilds the Docker image, and health-checks `http://<host>:3020/api/health`.
 
-### Auto-deploy on GitHub push
+### Auto-deploy on push (local)
 
-Add these **repository secrets** in GitHub (Settings → Secrets → Actions):
+Deploy runs from **your machine** after a successful `git push`, not on GitHub.
 
-| Secret | Description |
-|--------|-------------|
-| `DEPLOY_HOST` | SSH hostname or IP |
-| `DEPLOY_USER` | SSH username |
-| `DEPLOY_PASSWORD` | SSH password **or** use `DEPLOY_SSH_KEY` instead |
-| `DEPLOY_SSH_KEY` | (optional) Private SSH key contents |
-| `DEPLOY_REMOTE_DIR` | (optional) Remote path, default `~/torfin` |
-| `DEPLOY_PORT` | (optional) Health check port, default `3020` |
-| `DEPLOY_URL` | (optional) Full health URL override |
-| `DEPLOY_DOCKER_USER` | (optional) Container user:group, e.g. `14:staff` if your data dir is not owned by `1000:1000` |
-| `DEPLOY_LEGACY_DATA_DIR` | (optional) Existing data directory to reuse |
-| `DEPLOY_ENV_FILE` | (optional) Path to server `jellyfin.env` on the host |
-| `DEPLOY_MEDIA_PATH` | (optional) Host path mounted as `/media/movies` in the container |
-| `DEPLOY_LEGACY_PROJECT` | (optional) Old container name to remove before starting Torfin |
+One-time setup:
 
-Pushing to `main` runs tests, builds, and deploys when secrets are configured.
+```bash
+npm run install:hooks
+cp .env.deploy.example .env.thinktower
+# edit .env.thinktower with your SSH details
+```
+
+After that, every `git push` will:
+
+1. Push to GitHub
+2. Run `npm run thinktower` to deploy to your Docker host
+
+Push without deploying:
+
+```bash
+SKIP_DEPLOY=1 git push
+```
+
+Manual deploy anytime:
+
+```bash
+npm run thinktower
+```
 
 ---
 

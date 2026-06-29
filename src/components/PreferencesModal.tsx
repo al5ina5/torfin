@@ -5,6 +5,7 @@ import type { AppPreferences, CustomStreamProfile, DownloadConfig, PluginConfig,
 import type { PreferencesTab } from '../types'
 import type { ResultProfile } from '../types'
 import { AppModal } from './AppModal'
+import { DownloadDestinationsSettings } from './DownloadDestinationsSettings'
 import { TorboxAccountPanel } from './TorboxAccountPanel'
 
 type PreferencesModalProps = {
@@ -15,18 +16,13 @@ type PreferencesModalProps = {
   preferences: AppPreferences
   downloadConfig: DownloadConfig
   torboxApiKey: string
-  jellyfinApiKey: string
-  serviceStatus: string
-  serviceError: string
   onClose: () => void
   onTabChange: (tab: PreferencesTab) => void
   onUpdatePlugin: (pluginId: string, patch: Partial<PluginConfig>) => void
   onUpdatePreferences: (patch: Partial<AppPreferences>) => void
-  onUpdateDownloadConfig: (patch: Partial<DownloadConfig>) => void
+  onUpdateDownloadConfig: (config: DownloadConfig) => void
   onChangeTorboxApiKey: (value: string) => void
-  onChangeJellyfinApiKey: (value: string) => void
-  onOpenJellyfinSignIn: () => void
-  onTestJellyfin: () => void
+  onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
   onExportSettings: () => void
   onImportSettings: () => void
 }
@@ -39,18 +35,13 @@ export function PreferencesModal({
   preferences,
   downloadConfig,
   torboxApiKey,
-  jellyfinApiKey,
-  serviceStatus,
-  serviceError,
   onClose,
   onTabChange,
   onUpdatePlugin,
   onUpdatePreferences,
   onUpdateDownloadConfig,
   onChangeTorboxApiKey,
-  onChangeJellyfinApiKey,
   onOpenJellyfinSignIn,
-  onTestJellyfin,
   onExportSettings,
   onImportSettings,
 }: PreferencesModalProps) {
@@ -250,189 +241,11 @@ export function PreferencesModal({
       ) : null}
 
       {tab === 'downloads' ? (
-        <div className="mx-auto max-w-2xl space-y-4">
-          <div className="space-y-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-            <div className="text-[12px] font-semibold">Jellyfin</div>
-            <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-              <span>Server URL</span>
-              <input
-                value={downloadConfig.jellyfinUrl}
-                onChange={(event) => onUpdateDownloadConfig({ jellyfinUrl: event.target.value })}
-                className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-              />
-            </label>
-            <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-              <span>API Key</span>
-              <input
-                value={jellyfinApiKey}
-                onChange={(event) => onChangeJellyfinApiKey(event.target.value)}
-                type="password"
-                className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={onOpenJellyfinSignIn}
-                className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
-              >
-                Sign In to Jellyfin
-              </button>
-              <button
-                type="button"
-                onClick={onTestJellyfin}
-                className="h-7 rounded-md bg-[var(--mac-accent)] px-2 text-[11px] font-semibold text-[var(--mac-accent-text)]"
-              >
-                Test Jellyfin
-              </button>
-            </div>
-            {serviceStatus ? <p className="text-[11px] text-emerald-600">{serviceStatus}</p> : null}
-            {serviceError ? <p className="text-[11px] text-red-600 dark:text-red-300">{serviceError}</p> : null}
-          </div>
-
-          <div className="space-y-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-            <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-              <span>Downloader</span>
-              <select
-                value={downloadConfig.downloader}
-                onChange={(event) => onUpdateDownloadConfig({ downloader: event.target.value as DownloadConfig['downloader'] })}
-                className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-              >
-                <option value="local">Local server downloader</option>
-                <option value="ssh">SSH native wget on Jellyfin host</option>
-                <option value="qbittorrent">qBittorrent magnet fallback</option>
-              </select>
-            </label>
-
-            {downloadConfig.downloader === 'local' ? (
-              <>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Movie Folder</span>
-                  <input
-                    value={downloadConfig.localSavePath}
-                    onChange={(event) => onUpdateDownloadConfig({ localSavePath: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>TV Folder</span>
-                  <input
-                    value={downloadConfig.tvSavePath}
-                    onChange={(event) => onUpdateDownloadConfig({ tvSavePath: event.target.value })}
-                    placeholder="Optional — Jellyfin usually handles show folders"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-              </>
-            ) : null}
-
-            {downloadConfig.downloader === 'ssh' ? (
-              <>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>SSH Host</span>
-                  <input
-                    value={downloadConfig.sshHost}
-                    onChange={(event) => onUpdateDownloadConfig({ sshHost: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>SSH User</span>
-                  <input
-                    value={downloadConfig.sshUsername}
-                    onChange={(event) => onUpdateDownloadConfig({ sshUsername: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>SSH Password</span>
-                  <input
-                    value={downloadConfig.sshPassword}
-                    onChange={(event) => onUpdateDownloadConfig({ sshPassword: event.target.value })}
-                    type="password"
-                    placeholder="Optional when key auth works"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Save Path</span>
-                  <input
-                    value={downloadConfig.sshSavePath}
-                    onChange={(event) => onUpdateDownloadConfig({ sshSavePath: event.target.value })}
-                    placeholder="/path/Jellyfin/watches"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>TV Save Path</span>
-                  <input
-                    value={downloadConfig.tvSavePath}
-                    onChange={(event) => onUpdateDownloadConfig({ tvSavePath: event.target.value })}
-                    placeholder="Optional TV library root"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-              </>
-            ) : null}
-
-            {downloadConfig.downloader === 'qbittorrent' ? (
-              <>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Web UI URL</span>
-                  <input
-                    value={downloadConfig.qbittorrentUrl}
-                    onChange={(event) => onUpdateDownloadConfig({ qbittorrentUrl: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Username</span>
-                  <input
-                    value={downloadConfig.qbittorrentUsername}
-                    onChange={(event) => onUpdateDownloadConfig({ qbittorrentUsername: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Password</span>
-                  <input
-                    value={downloadConfig.qbittorrentPassword}
-                    onChange={(event) => onUpdateDownloadConfig({ qbittorrentPassword: event.target.value })}
-                    type="password"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Save Path</span>
-                  <input
-                    value={downloadConfig.savePath}
-                    onChange={(event) => onUpdateDownloadConfig({ savePath: event.target.value })}
-                    placeholder="/media/movies"
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-                <label className="grid grid-cols-[130px_1fr] items-center gap-3 text-[12px]">
-                  <span>Category</span>
-                  <input
-                    value={downloadConfig.category}
-                    onChange={(event) => onUpdateDownloadConfig({ category: event.target.value })}
-                    className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </label>
-              </>
-            ) : null}
-
-            <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-              <span>Refresh Jellyfin after download</span>
-              <input
-                type="checkbox"
-                checked={downloadConfig.refreshJellyfinOnComplete}
-                onChange={(event) => onUpdateDownloadConfig({ refreshJellyfinOnComplete: event.target.checked })}
-                className="size-4 accent-[var(--mac-accent)]"
-              />
-            </label>
-          </div>
-        </div>
+        <DownloadDestinationsSettings
+          downloadConfig={downloadConfig}
+          onUpdateDownloadConfig={onUpdateDownloadConfig}
+          onOpenJellyfinSignIn={onOpenJellyfinSignIn}
+        />
       ) : null}
 
       {tab === 'playback' ? (

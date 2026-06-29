@@ -530,6 +530,16 @@ fn run_ssh_command(
     password: Option<&str>,
     script: &str,
 ) -> Result<String, String> {
+    run_ssh_command_on_port(host, 22, username, password, script)
+}
+
+fn run_ssh_command_on_port(
+    host: &str,
+    port: u16,
+    username: &str,
+    password: Option<&str>,
+    script: &str,
+) -> Result<String, String> {
     let host = host.trim();
     let username = username.trim();
     if host.is_empty() || username.is_empty() {
@@ -550,6 +560,8 @@ fn run_ssh_command(
 
     let mut child = command
         .args([
+            "-p",
+            &port.to_string(),
             "-o",
             &batch_mode_arg,
             "-o",
@@ -758,9 +770,365 @@ fn cancel_remote_url_download_inner(id: String) -> Result<(), String> {
         partial = shell_quote(&meta.partial_path),
         status = shell_quote(&meta.status_path),
     );
-    run_ssh_command(&meta.host, &meta.username, meta.password.as_deref(), &script)?;
+    run_ssh_command(
+        &meta.host,
+        &meta.username,
+        meta.password.as_deref(),
+        &script,
+    )?;
     downloads.remove(&id);
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SshTestResult {
+    writable: bool,
+    has_wget: bool,
+    message: String,
+}
+
+#[tauri::command]
+pub(crate) async fn test_ssh_connection(
+    host: String,
+    port: Option<u16>,
+    username: String,
+    password: Option<String>,
+    save_path: String,
+) -> Result<SshTestResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        test_ssh_connection_inner(host, port.unwrap_or(22), username, password, save_path)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn test_ssh_connection_inner(
+    host: String,
+    port: u16,
+    username: String,
+    password: Option<String>,
+    save_path: String,
+) -> Result<SshTestResult, String> {
+    let path = save_path.trim();
+    if path.is_empty() {
+        return Err("Enter the folder Jellyfin watches.".to_string());
+    }
+    let script = format!(
+        r#"set -eu
+path={path}
+has_wget=0
+writable=0
+if command -v wget >/dev/null 2>&1; then has_wget=1; fi
+if mkdir -p "$path" 2>/dev/null && [ -w "$path" ]; then writable=1; fi
+printf '%s\n%s' "$writable" "$has_wget""#,
+        path = shell_quote(path),
+    );
+    let output = run_ssh_command_on_port(&host, port, &username, password.as_deref(), &script)?;
+    let mut lines = output.lines();
+    let writable = lines.next().unwrap_or("0") == "1";
+    let has_wget = lines.next().unwrap_or("0") == "1";
+    let mut parts = vec!["SSH connected".to_string()];
+    if writable {
+        parts.push(format!("write access to {path}"));
+    } else {
+        parts.push(format!("cannot write to {path}"));
+    }
+    if has_wget {
+        parts.push("wget found".to_string());
+    } else {
+        parts.push("wget not installed".to_string());
+    }
+    Ok(SshTestResult {
+        writable,
+        has_wget,
+        message: parts.join(" · "),
+    })
+}
+
+static LOCAL_DOWNLOADS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, LocalDownloadMeta>>,
+> = std::sync::OnceLock::new();
+
+#[derive(Clone)]
+struct LocalDownloadMeta {
+    target_path: String,
+    partial_path: String,
+    save_path: String,
+    total_size: i64,
+    last_downloaded: i64,
+    last_seen: std::time::Instant,
+    complete: bool,
+    error: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalDownloadConfig {
+    save_path: String,
+}
+
+#[tauri::command]
+pub(crate) async fn start_local_url_download(
+    config: LocalDownloadConfig,
+    request: RemoteDownloadRequest,
+) -> Result<DownloadStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || start_local_url_download_inner(config, request))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn start_local_url_download_inner(
+    config: LocalDownloadConfig,
+    request: RemoteDownloadRequest,
+) -> Result<DownloadStatus, String> {
+    let url = normalize_remote_url(&request.url)?;
+    let save_path = config.save_path.trim();
+    if save_path.is_empty() {
+        return Err("Choose a local download folder.".to_string());
+    }
+
+    let id = request
+        .id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("local-{}", stable_id(&url)));
+    let filename = sanitize_filename(&request.filename);
+    let target_dir = request
+        .folder_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(sanitize_filename)
+        .map(|folder| format!("{}/{}", save_path.trim_end_matches('/'), folder))
+        .unwrap_or_else(|| save_path.trim_end_matches('/').to_string());
+    let target_path = format!("{target_dir}/{filename}");
+    let partial_path = format!("{target_path}.part");
+
+    std::fs::create_dir_all(&target_dir).map_err(|error| error.to_string())?;
+
+    if !command_exists("wget") {
+        return Err("wget is not installed. Install it with: brew install wget".to_string());
+    }
+
+    let mut child = std::process::Command::new("wget")
+        .args([
+            "-q",
+            "--show-progress",
+            "--progress=dot:giga",
+            "-c",
+            "-O",
+            &partial_path,
+            &url,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Could not start wget: {error}"))?;
+
+    let id_for_thread = id.clone();
+    std::thread::spawn(move || {
+        let status = child.wait();
+        let mut downloads = LOCAL_DOWNLOADS
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+            .lock()
+            .ok();
+        if let Some(mut downloads) = downloads {
+            if let Some(meta) = downloads.get_mut(&id_for_thread) {
+                match status {
+                    Ok(exit) if exit.success() => {
+                        let _ = std::fs::rename(&meta.partial_path, &meta.target_path);
+                        meta.complete = true;
+                    }
+                    Ok(exit) => {
+                        meta.error = format!("wget exited with {exit}");
+                    }
+                    Err(error) => {
+                        meta.error = error.to_string();
+                    }
+                }
+            }
+        }
+    });
+
+    let meta = LocalDownloadMeta {
+        target_path: target_path.clone(),
+        partial_path: partial_path.clone(),
+        save_path: save_path.to_string(),
+        total_size: 0,
+        last_downloaded: 0,
+        last_seen: std::time::Instant::now(),
+        complete: false,
+        error: String::new(),
+    };
+    LOCAL_DOWNLOADS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "Could not lock local download state.".to_string())?
+        .insert(id.clone(), meta);
+
+    Ok(DownloadStatus {
+        id,
+        hash: None,
+        name: filename,
+        progress: 0.0,
+        state: "downloading".to_string(),
+        speed: 0,
+        eta: -1,
+        size: 0,
+        downloaded: 0,
+        save_path: Some(save_path.to_string()),
+        target_path: Some(target_path),
+        partial_path: Some(partial_path),
+        status_path: None,
+        complete: false,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn get_local_url_download(id: String) -> Result<DownloadStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || get_local_url_download_inner(id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_local_url_download_inner(id: String) -> Result<DownloadStatus, String> {
+    let mut downloads = LOCAL_DOWNLOADS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "Could not lock local download state.".to_string())?;
+    let meta = downloads
+        .get_mut(&id)
+        .ok_or_else(|| "This local download is not being tracked.".to_string())?;
+
+    let downloaded = file_size(&meta.partial_path).max(file_size(&meta.target_path));
+    let now = std::time::Instant::now();
+    let elapsed = now.duration_since(meta.last_seen).as_secs_f64().max(0.001);
+    let speed = if downloaded >= meta.last_downloaded {
+        ((downloaded - meta.last_downloaded) as f64 / elapsed) as i64
+    } else {
+        0
+    };
+    meta.last_downloaded = downloaded;
+    meta.last_seen = now;
+
+    if meta.complete {
+        return Ok(DownloadStatus {
+            id: id.clone(),
+            hash: None,
+            name: meta
+                .target_path
+                .split('/')
+                .next_back()
+                .unwrap_or("download")
+                .to_string(),
+            progress: 1.0,
+            state: "complete".to_string(),
+            speed: 0,
+            eta: 0,
+            size: downloaded.max(meta.total_size),
+            downloaded,
+            save_path: Some(meta.save_path.clone()),
+            target_path: Some(meta.target_path.clone()),
+            partial_path: None,
+            status_path: None,
+            complete: true,
+        });
+    }
+
+    if !meta.error.is_empty() {
+        return Ok(DownloadStatus {
+            id: id.clone(),
+            hash: None,
+            name: meta
+                .target_path
+                .split('/')
+                .next_back()
+                .unwrap_or("download")
+                .to_string(),
+            progress: 0.0,
+            state: format!("error:{}", meta.error),
+            speed: 0,
+            eta: -1,
+            size: meta.total_size,
+            downloaded,
+            save_path: Some(meta.save_path.clone()),
+            target_path: Some(meta.target_path.clone()),
+            partial_path: Some(meta.partial_path.clone()),
+            status_path: None,
+            complete: false,
+        });
+    }
+
+    let size = meta.total_size.max(downloaded);
+    let progress = if size > 0 {
+        downloaded as f64 / size as f64
+    } else {
+        0.0
+    };
+
+    Ok(DownloadStatus {
+        id,
+        hash: None,
+        name: meta
+            .target_path
+            .split('/')
+            .next_back()
+            .unwrap_or("download")
+            .to_string(),
+        progress,
+        state: "downloading".to_string(),
+        speed,
+        eta: if speed > 0 && size > downloaded {
+            ((size - downloaded) as f64 / speed as f64) as i64
+        } else {
+            -1
+        },
+        size,
+        downloaded,
+        save_path: Some(meta.save_path.clone()),
+        target_path: Some(meta.target_path.clone()),
+        partial_path: Some(meta.partial_path.clone()),
+        status_path: None,
+        complete: false,
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn cancel_local_url_download(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || cancel_local_url_download_inner(id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn cancel_local_url_download_inner(id: String) -> Result<(), String> {
+    let mut downloads = LOCAL_DOWNLOADS
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+        .lock()
+        .map_err(|_| "Could not lock local download state.".to_string())?;
+    let meta = downloads
+        .get(&id)
+        .ok_or_else(|| "This local download is not being tracked.".to_string())?
+        .clone();
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", &meta.partial_path])
+        .status();
+    downloads.remove(&id);
+    Ok(())
+}
+
+fn command_exists(command: &str) -> bool {
+    std::process::Command::new("sh")
+        .args(["-lc", &format!("command -v {command}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn file_size(path: &str) -> i64 {
+    std::fs::metadata(path)
+        .map(|meta| meta.len() as i64)
+        .unwrap_or(0)
 }
 
 async fn tokio_sleep(duration: std::time::Duration) {

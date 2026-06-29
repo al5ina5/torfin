@@ -1,4 +1,6 @@
-import type { DownloadConfig, DownloadJob, DownloadSort, DownloadStatus, Movie, StreamResult } from '../types'
+import type { DownloadConfig, DownloadDestination, DownloadJob, DownloadPollConfig, DownloadSort, DownloadStatus, Movie, StreamResult } from '../types'
+import { destinationRootForMovie } from './download-destinations'
+import type { DestinationSecrets } from './download-destinations'
 
 export const defaultDownloadConfig: DownloadConfig = {
   jellyfinUrl: '',
@@ -16,6 +18,8 @@ export const defaultDownloadConfig: DownloadConfig = {
   savePath: '',
   category: '',
   refreshJellyfinOnComplete: true,
+  activeDestinationId: '',
+  destinations: [],
 }
 
 export function withDownloadTimestamp(job: DownloadJob): DownloadJob {
@@ -110,6 +114,46 @@ export function qbittorrentPayload(config: DownloadConfig) {
     password: config.qbittorrentPassword,
     savePath: config.savePath || null,
     category: config.category || null,
+  }
+}
+
+export function buildPollConfig(
+  config: DownloadConfig,
+  destination: DownloadDestination,
+  secrets: DestinationSecrets,
+  movie?: Movie,
+): DownloadPollConfig {
+  const savePath = movie ? destinationRootForMovie(destination, movie) : destination.moviesPath
+  const jellyfin =
+    destination.refreshOnComplete && destination.jellyfinUrl.trim() && secrets.jellyfinApiKey.trim()
+      ? { baseUrl: destination.jellyfinUrl, apiKey: secrets.jellyfinApiKey, refreshOnComplete: true }
+      : undefined
+
+  if (destination.kind === 'remote-jellyfin') {
+    return {
+      mode: 'ssh',
+      ssh: {
+        host: destination.sshHost,
+        username: destination.sshUsername,
+        password: secrets.sshPassword || null,
+        savePath,
+      },
+      jellyfin,
+    }
+  }
+
+  if (config.downloader === 'qbittorrent') {
+    return {
+      mode: 'qbittorrent',
+      qbittorrent: qbittorrentPayload({ ...config, savePath }),
+      jellyfin,
+    }
+  }
+
+  return {
+    mode: 'local',
+    local: { savePath },
+    jellyfin,
   }
 }
 

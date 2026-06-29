@@ -76,8 +76,7 @@ pub(crate) async fn lookup_jellyfin_library(
                 .and_then(|value| value.as_array())
                 .and_then(|items| {
                     items.iter().find(|item| {
-                        item.get("IndexNumber")
-                            .and_then(|value| value.as_i64())
+                        item.get("IndexNumber").and_then(|value| value.as_i64())
                             == Some(episode as i64)
                     })
                 });

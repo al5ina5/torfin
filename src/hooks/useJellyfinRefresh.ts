@@ -2,53 +2,61 @@ import { useEffect, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import { isTauriRuntime, postApi } from '../lib/api'
-import type { DownloadConfig, DownloadJob } from '../types'
+import type { DownloadJob } from '../types'
 
 type UseJellyfinRefreshArgs = {
-  downloadConfig: DownloadConfig
   downloadJobs: DownloadJob[]
   setDownloadJobs: Dispatch<SetStateAction<DownloadJob[]>>
 }
 
-export function useJellyfinRefresh({ downloadConfig, downloadJobs, setDownloadJobs }: UseJellyfinRefreshArgs) {
+export function useJellyfinRefresh({ downloadJobs, setDownloadJobs }: UseJellyfinRefreshArgs) {
   const processedIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!downloadConfig.refreshJellyfinOnComplete) return
-    if (!downloadConfig.jellyfinUrl.trim() || !downloadConfig.jellyfinApiKey.trim()) return
-
     const queue = downloadJobs.filter((job) => {
       const id = job.status?.id || job.pendingId || ''
-      return Boolean(id && job.status?.complete && !job.jellyfinRefreshed && !processedIdsRef.current.has(id))
+      const jellyfin = job.pollConfig?.jellyfin
+      return Boolean(
+        id
+        && jellyfin?.refreshOnComplete
+        && jellyfin.baseUrl.trim()
+        && jellyfin.apiKey.trim()
+        && job.status?.complete
+        && !job.jellyfinRefreshed
+        && !processedIdsRef.current.has(id),
+      )
     })
     if (!queue.length) return
 
     let cancelled = false
 
-    const refreshOne = async (id: string) => {
+    const refreshOne = async (job: DownloadJob) => {
+      const id = job.status?.id || job.pendingId || ''
+      const jellyfin = job.pollConfig?.jellyfin
+      if (!jellyfin) return
       try {
         if (isTauriRuntime()) {
           const { invoke } = await import('@tauri-apps/api/core')
           await invoke('refresh_jellyfin_library', {
-            baseUrl: downloadConfig.jellyfinUrl,
-            apiKey: downloadConfig.jellyfinApiKey,
+            baseUrl: jellyfin.baseUrl,
+            apiKey: jellyfin.apiKey,
           })
         } else {
           await postApi('/api/jellyfin/refresh', {
-            baseUrl: downloadConfig.jellyfinUrl,
-            apiKey: downloadConfig.jellyfinApiKey,
+            baseUrl: jellyfin.baseUrl,
+            apiKey: jellyfin.apiKey,
           })
         }
         if (!cancelled) {
           setDownloadJobs((current) =>
-            current.map((job) => ((job.status?.id || job.pendingId) === id ? { ...job, jellyfinRefreshed: true, error: '' } : job)),
+            current.map((entry) => ((entry.status?.id || entry.pendingId) === id ? { ...entry, jellyfinRefreshed: true, error: '' } : entry)),
           )
         }
       } catch (error) {
         if (!cancelled) {
           const message = error instanceof Error ? error.message : 'Downloaded, but Jellyfin refresh failed.'
           setDownloadJobs((current) =>
-            current.map((job) => ((job.status?.id || job.pendingId) === id ? { ...job, error: message } : job)),
+            current.map((entry) => ((entry.status?.id || entry.pendingId) === id ? { ...entry, error: message } : entry)),
           )
         }
       }
@@ -58,12 +66,12 @@ export function useJellyfinRefresh({ downloadConfig, downloadJobs, setDownloadJo
       for (const job of queue) {
         const id = job.status?.id || job.pendingId || ''
         processedIdsRef.current.add(id)
-        await refreshOne(id)
+        await refreshOne(job)
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [downloadConfig, downloadJobs, setDownloadJobs])
+  }, [downloadJobs, setDownloadJobs])
 }

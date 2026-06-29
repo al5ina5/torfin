@@ -87,10 +87,7 @@ pub(crate) fn extract_info_hash(value: &str) -> Option<String> {
     let marker = "btih:";
     let start = lower.find(marker)? + marker.len();
     let rest = &value[start..];
-    let hash = rest
-        .split(['&', '?', '/'])
-        .next()?
-        .trim();
+    let hash = rest.split(['&', '?', '/']).next()?.trim();
 
     if hash.is_empty() {
         None
@@ -418,11 +415,16 @@ fn plan_label(plan_id: i64) -> String {
 }
 
 fn string_field(body: &serde_json::Value, keys: &[&str]) -> Option<String> {
-    keys.iter().find_map(|key| body.get(*key).and_then(|value| value.as_str()).map(ToString::to_string))
+    keys.iter().find_map(|key| {
+        body.get(*key)
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+    })
 }
 
 fn number_field(body: &serde_json::Value, keys: &[&str]) -> Option<i64> {
-    keys.iter().find_map(|key| body.get(*key).and_then(|value| value.as_i64()))
+    keys.iter()
+        .find_map(|key| body.get(*key).and_then(|value| value.as_i64()))
 }
 
 #[tauri::command]
@@ -445,7 +447,8 @@ pub(crate) async fn get_torbox_account(api_key: String) -> Result<TorboxAccountS
         .await
         .map_err(|error| error.to_string())?;
     if !user_status.is_success() {
-        return Err(body_detail(&user_body).unwrap_or_else(|| format!("Torbox account lookup failed with {user_status}")));
+        return Err(body_detail(&user_body)
+            .unwrap_or_else(|| format!("Torbox account lookup failed with {user_status}")));
     }
 
     let user = user_body.get("data").unwrap_or(&user_body);
@@ -482,10 +485,16 @@ pub(crate) async fn get_torbox_account(api_key: String) -> Result<TorboxAccountS
             .and_then(|value| value.as_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if state.contains("cached") || entry.get("cached").and_then(|value| value.as_bool()) == Some(true) {
+        if state.contains("cached")
+            || entry.get("cached").and_then(|value| value.as_bool()) == Some(true)
+        {
             cached_torrents += 1;
         }
-        if !state.is_empty() && !["completed", "complete", "cached", "error"].iter().any(|item| state.contains(item)) {
+        if !state.is_empty()
+            && !["completed", "complete", "cached", "error"]
+                .iter()
+                .any(|item| state.contains(item))
+        {
             active_torrents += 1;
         }
     }

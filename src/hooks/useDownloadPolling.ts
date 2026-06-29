@@ -1,34 +1,19 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
-import { getApi } from '../lib/api'
-import { qbittorrentPayload, sshPayload } from '../lib/downloads'
-import type { DownloadConfig, DownloadJob, DownloadStatus } from '../types'
+import type { DownloadJob, DownloadStatus } from '../types'
 
 type UseDownloadPollingArgs = {
   enabled: boolean
-  downloadConfig: DownloadConfig
   downloadJobs: DownloadJob[]
   setDownloadJobs: Dispatch<SetStateAction<DownloadJob[]>>
 }
 
-export function useDownloadPolling({ enabled, downloadConfig, downloadJobs, setDownloadJobs }: UseDownloadPollingArgs) {
-  const activeIdsRef = useRef<string[]>([])
-
-  const pollConfig = useMemo(
-    () => ({
-      downloader: downloadConfig.downloader,
-      qbittorrent: qbittorrentPayload(downloadConfig),
-      ssh: sshPayload(downloadConfig),
-    }),
-    [downloadConfig],
-  )
+export function useDownloadPolling({ enabled, downloadJobs, setDownloadJobs }: UseDownloadPollingArgs) {
+  const jobsRef = useRef<DownloadJob[]>([])
 
   useEffect(() => {
-    activeIdsRef.current = downloadJobs
-      .filter((job) => job.status?.id && !job.status.complete && !job.paused)
-      .map((job) => job.status?.id || '')
-      .filter(Boolean)
+    jobsRef.current = downloadJobs.filter((job) => job.status?.id && !job.status.complete && !job.paused)
   }, [downloadJobs])
 
   useEffect(() => {
@@ -40,15 +25,21 @@ export function useDownloadPolling({ enabled, downloadConfig, downloadJobs, setD
       if (polling) return
       polling = true
       try {
-        const ids = activeIdsRef.current
-        if (!ids.length) return
+        const jobs = jobsRef.current
+        if (!jobs.length) return
         const invokeApi = await import('@tauri-apps/api/core').then((api) => api.invoke)
         const updates = await Promise.all(
-          ids.map(async (id) => {
+          jobs.map(async (job) => {
+            const id = job.status?.id || ''
+            const pollConfig = job.pollConfig
+            if (!id || !pollConfig) return { id, error: 'Missing download tracking config.' }
             try {
-              const status = pollConfig.downloader === 'qbittorrent'
-                ? await invokeApi<DownloadStatus>('get_qbittorrent_download', { config: pollConfig.qbittorrent, id })
-                : await invokeApi<DownloadStatus>('get_remote_url_download', { id, config: pollConfig.ssh })
+              const status =
+                pollConfig.mode === 'qbittorrent'
+                  ? await invokeApi<DownloadStatus>('get_qbittorrent_download', { config: pollConfig.qbittorrent, id })
+                  : pollConfig.mode === 'ssh'
+                    ? await invokeApi<DownloadStatus>('get_remote_url_download', { id, config: pollConfig.ssh })
+                    : await invokeApi<DownloadStatus>('get_local_url_download', { id })
               return { id, status, error: '' }
             } catch (error) {
               return { id, error: error instanceof Error ? error.message : 'Could not poll download.' }
@@ -75,9 +66,10 @@ export function useDownloadPolling({ enabled, downloadConfig, downloadJobs, setD
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [enabled, pollConfig, setDownloadJobs])
+  }, [enabled, setDownloadJobs])
 }
 
 export async function loadServerDownloads() {
-  return getApi<DownloadStatus[]>('/api/downloads')
+  const { getApi } = await import('../lib/api')
+  return getApi<import('../types').DownloadStatus[]>('/api/downloads')
 }

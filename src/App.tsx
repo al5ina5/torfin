@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
 import { ConfirmationDialog } from './components/ConfirmationDialog'
+import { DownloadDestinationPicker } from './components/DownloadDestinationPicker'
 import { DownloadsModal } from './components/DownloadsModal'
 import { FiltersModal } from './components/FiltersModal'
 import { InspectorPanel } from './components/InspectorPanel'
@@ -25,6 +26,17 @@ import { catalogPageUrl, enrichMovieFromMeta, metaUrl, normalizeCatalogItem, nor
 import { allProfileOptions, findCustomProfile } from './lib/custom-profiles'
 import { allFilterPresets, createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
 import {
+  destinationToLegacyConfig,
+  getDefaultDestination,
+  getDestination,
+  loadDestinationSecrets,
+  migrateDownloadConfig,
+  migrateLegacySecrets,
+  readyDestinations,
+  shouldPromptDestinationPicker,
+} from './lib/download-destinations'
+import {
+  buildPollConfig,
   defaultDownloadConfig,
   dedupeDownloadJobs,
   localPayload,
@@ -32,7 +44,6 @@ import {
   makeMovieFolderName,
   mergeServerDownloadJobs,
   qbittorrentPayload,
-  sshPayload,
   withDownloadTimestamp,
 } from './lib/downloads'
 import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
@@ -50,6 +61,7 @@ import type {
   AppPreferences,
   ContentType,
   DownloadConfig,
+  DownloadDestination,
   DownloadJob,
   DownloadSort,
   FilterPreset,
@@ -129,6 +141,11 @@ function loadContentType(): ContentType {
   return stored === 'series' ? 'series' : 'movie'
 }
 
+function loadDownloadConfig() {
+  const stored = loadStoredJson(STORAGE_KEYS.downloadConfig, defaultDownloadConfig)
+  return migrateDownloadConfig(stored, isTauriRuntime())
+}
+
 export default function App() {
   const tauri = isTauriRuntime()
   const [contentType, setContentType] = useState<ContentType>(loadContentType)
@@ -149,7 +166,12 @@ export default function App() {
   const [searchHistory, setSearchHistory] = useState<string[]>(loadSearchHistory)
   const [customFilterPresets, setCustomFilterPresets] = useState(() => loadCustomFilterPresets())
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false)
-  const [downloadConfig, setDownloadConfig] = useState<DownloadConfig>(loadStoredJson(STORAGE_KEYS.downloadConfig, defaultDownloadConfig))
+  const [downloadConfig, setDownloadConfig] = useState<DownloadConfig>(loadDownloadConfig)
+  const [destinationSecretMap, setDestinationSecretMap] = useState<Record<string, { jellyfinApiKey: string; sshPassword: string }>>({})
+  const [destinationPickerOpen, setDestinationPickerOpen] = useState(false)
+  const [pendingDownload, setPendingDownload] = useState<{ stream: StreamResult; index: number } | null>(null)
+  const [jellyfinSignInBaseUrl, setJellyfinSignInBaseUrl] = useState('')
+  const [jellyfinSignInCallback, setJellyfinSignInCallback] = useState<((token: string) => void) | null>(null)
   const [downloadJobs, setDownloadJobs] = useState<DownloadJob[]>(dedupeDownloadJobs(loadStoredJson<DownloadJob[]>(STORAGE_KEYS.downloadJobs, []).map(withDownloadTimestamp)))
   const [downloadSort, setDownloadSort] = useState<DownloadSort>(loadStoredJson<DownloadSort>(STORAGE_KEYS.downloadSort, 'newest'))
   const [downloadSortOpen, setDownloadSortOpen] = useState(false)
@@ -174,8 +196,6 @@ export default function App() {
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null)
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number | null>(null)
   const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | null>(null)
-  const [serviceStatus, setServiceStatus] = useState('')
-  const [serviceError, setServiceError] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [downloadsOpen, setDownloadsOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
@@ -191,7 +211,7 @@ export default function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const pendingAutoPlayRef = useRef(false)
 
-  const { torboxApiKey, jellyfinApiKey, sshPassword, setTorboxApiKey, setJellyfinApiKey, setSshPassword } = useSecrets()
+  const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
   const debouncedQuery = useDebouncedValue(query, 300).trim()
   const shouldRemoteSearch = debouncedQuery.length >= 2
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
@@ -247,19 +267,57 @@ export default function App() {
   })
   const { data: serverStatuses } = useSWR(tauri ? null : '/api/downloads', loadServerDownloads, { refreshInterval: 1000 })
 
+  const activeDestination = useMemo(() => getDestination(downloadConfig), [downloadConfig])
+  const jellyfinDestination = useMemo(
+    () =>
+      downloadConfig.destinations.find((entry) => entry.kind === 'remote-jellyfin' && entry.jellyfinUrl.trim())
+      ?? downloadConfig.destinations.find((entry) => entry.jellyfinUrl.trim())
+      ?? activeDestination,
+    [activeDestination, downloadConfig.destinations],
+  )
+  const activeSecrets = activeDestination ? destinationSecretMap[activeDestination.id] : undefined
+  const jellyfinSecrets = jellyfinDestination ? destinationSecretMap[jellyfinDestination.id] : undefined
+
   const effectiveDownloadConfig = useMemo(
-    () => ({
-      ...downloadConfig,
-      sshPassword: sshPassword || downloadConfig.sshPassword,
-      jellyfinApiKey: jellyfinApiKey || downloadConfig.jellyfinApiKey,
-    }),
-    [downloadConfig, jellyfinApiKey, sshPassword],
+    () => {
+      if (!activeDestination) {
+        return {
+          ...downloadConfig,
+          sshPassword: sshPassword || downloadConfig.sshPassword,
+          jellyfinApiKey: jellyfinApiKey || downloadConfig.jellyfinApiKey,
+        }
+      }
+      const secrets = {
+        jellyfinApiKey: activeSecrets?.jellyfinApiKey || jellyfinApiKey || downloadConfig.jellyfinApiKey,
+        sshPassword: activeSecrets?.sshPassword || sshPassword || downloadConfig.sshPassword,
+      }
+      return destinationToLegacyConfig(downloadConfig, activeDestination, secrets)
+    },
+    [activeDestination, activeSecrets, downloadConfig, jellyfinApiKey, sshPassword],
   )
 
-  useDownloadPolling({ enabled: tauri, downloadConfig: effectiveDownloadConfig, downloadJobs, setDownloadJobs })
-  useJellyfinRefresh({ downloadConfig: effectiveDownloadConfig, downloadJobs, setDownloadJobs })
+  useDownloadPolling({ enabled: tauri, downloadJobs, setDownloadJobs })
+  useJellyfinRefresh({ downloadJobs, setDownloadJobs })
   useDownloadNotifications({ enabled: preferences.downloadNotifications, jobs: downloadJobs })
   useDockBadge(downloadJobs)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const entries = await Promise.all(
+        downloadConfig.destinations.map(async (destination) => [destination.id, await loadDestinationSecrets(destination)] as const),
+      )
+      if (!cancelled) setDestinationSecretMap(Object.fromEntries(entries))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [downloadConfig.destinations])
+
+  useEffect(() => {
+    if (!secretsLoaded || !downloadConfig.destinations.length) return
+    void migrateLegacySecrets(downloadConfig, { jellyfinApiKey, sshPassword })
+  }, [downloadConfig, downloadConfig.destinations.length, jellyfinApiKey, secretsLoaded, sshPassword])
 
   useEffect(() => {
     applyThemeMode(preferences.theme)
@@ -339,15 +397,18 @@ export default function App() {
   }, [selectedMovie])
 
   useEffect(() => {
-    if (!selectedMovie || !effectiveDownloadConfig.jellyfinUrl.trim() || !effectiveDownloadConfig.jellyfinApiKey.trim()) {
+    const jellyfinUrl = jellyfinDestination?.jellyfinUrl || effectiveDownloadConfig.jellyfinUrl
+    const jellyfinApiKeyValue =
+      jellyfinSecrets?.jellyfinApiKey || activeSecrets?.jellyfinApiKey || jellyfinApiKey || effectiveDownloadConfig.jellyfinApiKey
+    if (!selectedMovie || !jellyfinUrl.trim() || !jellyfinApiKeyValue.trim()) {
       setJellyfinMatch(null)
       return
     }
     let cancelled = false
     setJellyfinLoading(true)
     void lookupJellyfinLibrary({
-      baseUrl: effectiveDownloadConfig.jellyfinUrl,
-      apiKey: effectiveDownloadConfig.jellyfinApiKey,
+      baseUrl: jellyfinUrl,
+      apiKey: jellyfinApiKeyValue,
       imdbId: selectedMovie.id,
       contentType: selectedMovie.type,
       season: episodeSelection?.season,
@@ -362,7 +423,17 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [effectiveDownloadConfig.jellyfinApiKey, effectiveDownloadConfig.jellyfinUrl, episodeSelection?.episode, episodeSelection?.season, selectedMovie])
+  }, [
+    activeSecrets?.jellyfinApiKey,
+    effectiveDownloadConfig.jellyfinApiKey,
+    effectiveDownloadConfig.jellyfinUrl,
+    episodeSelection?.episode,
+    episodeSelection?.season,
+    jellyfinApiKey,
+    jellyfinDestination?.jellyfinUrl,
+    jellyfinSecrets?.jellyfinApiKey,
+    selectedMovie,
+  ])
 
   useEffect(() => {
     const modalOpen = filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || Boolean(confirmRemove)
@@ -438,12 +509,7 @@ export default function App() {
         libraryViewMode: (payload.preferences.libraryViewMode === 'list' ? 'list' : 'grid') as LibraryViewMode,
       })
       setPlugins(payload.plugins)
-      setDownloadConfig((current) => ({
-        ...current,
-        ...payload.downloadConfig,
-        jellyfinApiKey: current.jellyfinApiKey,
-        sshPassword: current.sshPassword,
-      }))
+      setDownloadConfig(migrateDownloadConfig({ ...defaultDownloadConfig, ...payload.downloadConfig }, tauri))
       setLayout({
         leftSidebarWidth: clampNumber(payload.layout.leftSidebarWidth, layoutLimits.leftMin, layoutLimits.leftMax),
         rightSidebarWidth: clampNumber(payload.layout.rightSidebarWidth, layoutLimits.rightMin, layoutLimits.rightMax),
@@ -468,9 +534,122 @@ export default function App() {
     searchRef.current?.focus()
   }
 
-  function updateDownloadConfig(patch: Partial<DownloadConfig>) {
-    if (patch.sshPassword !== undefined) setSshPassword(patch.sshPassword)
-    setDownloadConfig((current) => ({ ...current, ...patch }))
+  function updateDownloadConfig(next: DownloadConfig) {
+    setDownloadConfig(migrateDownloadConfig(next, tauri))
+  }
+
+  function openJellyfinSignIn(baseUrl: string, onToken: (token: string) => void) {
+    setJellyfinSignInBaseUrl(baseUrl)
+    setJellyfinSignInCallback(() => onToken)
+    setJellyfinSignInOpen(true)
+  }
+
+  async function beginDownload(stream: StreamResult, index: number, destination: DownloadDestination) {
+    if (!selectedMovie) return
+    const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
+    setDownloadingStreamKey(key)
+    setDownloadsOpen(true)
+    await queueDownload(stream, index, selectedMovie, episodeSelection, destination)
+  }
+
+  async function queueDownload(
+    stream: StreamResult,
+    index: number,
+    movie: Movie,
+    episode: { season: number; episode: number } | undefined,
+    destination: DownloadDestination,
+  ) {
+    const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
+    const id = stream.infoHash?.toLowerCase() ?? `${movie.id}-${episode?.episode ?? 'movie'}-${index}-${Date.now()}`
+    const secrets = await loadDestinationSecrets(destination)
+    const pollConfig = buildPollConfig(downloadConfig, destination, secrets, movie)
+    setDownloadJobs((current) => [
+      { pendingId: id, createdAt: new Date().toISOString(), movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig },
+      ...current,
+    ])
+    try {
+      const sourceUrl = await resolveStreamUrl(torboxApiKey, stream, stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined)
+      const request = { id, url: sourceUrl, filename: makeDownloadFilename(movie, stream, episode), folderName: makeMovieFolderName(movie, episode) }
+      const legacy = destinationToLegacyConfig(downloadConfig, destination, secrets)
+      const status = tauri
+        ? await import('@tauri-apps/api/core').then(({ invoke }) => {
+            if (pollConfig.mode === 'qbittorrent') {
+              return invoke('start_qbittorrent_download', {
+                config: qbittorrentPayload(legacy),
+                request: { id, infoHash: null, magnetUrl: null, directUrl: sourceUrl, name: request.filename },
+              })
+            }
+            if (pollConfig.mode === 'ssh') {
+              return invoke('start_remote_url_download', { config: pollConfig.ssh, request })
+            }
+            return invoke('start_local_url_download', { config: pollConfig.local, request })
+          })
+        : await postApi('/api/downloads', { ...request, ...localPayload(legacy, movie) })
+      setDownloadJobs((current) => [
+        {
+          pendingId: id,
+          movie,
+          stream,
+          sourceUrl,
+          status: status as never,
+          destinationId: destination.id,
+          destinationName: destination.name,
+          pollConfig,
+        },
+        ...current.filter((job) => job.pendingId !== id),
+      ])
+    } catch (error) {
+      setDownloadJobs((current) => [
+        { pendingId: id, movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig, error: error instanceof Error ? error.message : 'Could not start download.' },
+        ...current.filter((job) => job.pendingId !== id),
+      ])
+    } finally {
+      setDownloadingStreamKey((current) => (current === key ? '' : current))
+    }
+  }
+
+  async function startDownload(stream: StreamResult, index: number) {
+    if (!selectedMovie) return
+    if (!torboxApiKey.trim()) {
+      window.alert('Add your Torbox API key in Settings → Plugins before downloading.')
+      setPreferencesTab('plugins')
+      setPreferencesOpen(true)
+      return
+    }
+    if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
+      const proceed = window.confirm(`${selectedMovie.name} already exists in Jellyfin at ${jellyfinMatch.qualityLabel || 'current quality'}. Download anyway?`)
+      if (!proceed) return
+    }
+
+    const ready = readyDestinations(downloadConfig, tauri)
+    if (!ready.length) {
+      setPendingDownload({ stream, index })
+      setDestinationPickerOpen(true)
+      return
+    }
+
+    if (shouldPromptDestinationPicker(downloadConfig, tauri)) {
+      setPendingDownload({ stream, index })
+      setDestinationPickerOpen(true)
+      return
+    }
+
+    const destination = getDefaultDestination(downloadConfig)
+    if (!destination || !ready.some((entry) => entry.id === destination.id)) {
+      setPendingDownload({ stream, index })
+      setDestinationPickerOpen(true)
+      return
+    }
+
+    await beginDownload(stream, index, destination)
+  }
+
+  async function handleDestinationPick(destination: DownloadDestination) {
+    setDestinationPickerOpen(false)
+    if (!pendingDownload) return
+    const { stream, index } = pendingDownload
+    setPendingDownload(null)
+    await beginDownload(stream, index, destination)
   }
 
   const handlePlaybackFailure = useCallback(async () => {
@@ -609,40 +788,15 @@ export default function App() {
     void playStream(compactStreams[0]!, 0)
   }, [compactStreams, streamsLoading, episodeSelection?.episode, episodeSelection?.season])
 
-  async function queueDownload(stream: StreamResult, index: number, movie: Movie, episode?: { season: number; episode: number }) {
-    const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
-    const id = stream.infoHash?.toLowerCase() ?? `${movie.id}-${episode?.episode ?? 'movie'}-${index}-${Date.now()}`
-    setDownloadJobs((current) => [{ pendingId: id, createdAt: new Date().toISOString(), movie, stream }, ...current])
-    try {
-      const sourceUrl = await resolveStreamUrl(torboxApiKey, stream, stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined)
-      const request = { id, url: sourceUrl, filename: makeDownloadFilename(movie, stream, episode), folderName: makeMovieFolderName(movie, episode) }
-      const status = tauri
-        ? await import('@tauri-apps/api/core').then(({ invoke }) => downloadConfig.downloader === 'qbittorrent'
-          ? invoke('start_qbittorrent_download', { config: qbittorrentPayload(downloadConfig), request: { id, infoHash: null, magnetUrl: null, directUrl: sourceUrl, name: request.filename } })
-          : invoke('start_remote_url_download', { config: sshPayload(effectiveDownloadConfig, movie), request }))
-        : await postApi('/api/downloads', { ...request, ...localPayload(downloadConfig, movie) })
-      setDownloadJobs((current) => [{ pendingId: id, movie, stream, sourceUrl, status: status as never }, ...current.filter((job) => job.pendingId !== id)])
-    } catch (error) {
-      setDownloadJobs((current) => [{ pendingId: id, movie, stream, error: error instanceof Error ? error.message : 'Could not start download.' }, ...current.filter((job) => job.pendingId !== id)])
-    } finally {
-      setDownloadingStreamKey((current) => (current === key ? '' : current))
-    }
-  }
-
-  async function startDownload(stream: StreamResult, index: number) {
-    if (!selectedMovie) return
-    if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
-      const proceed = window.confirm(`${selectedMovie.name} already exists in Jellyfin at ${jellyfinMatch.qualityLabel || 'current quality'}. Download anyway?`)
-      if (!proceed) return
-    }
-    const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
-    setDownloadingStreamKey(key)
-    setDownloadsOpen(true)
-    await queueDownload(stream, index, selectedMovie, episodeSelection)
-  }
-
   async function downloadSeason() {
     if (!selectedMovie || selectedMovie.type !== 'series' || selectedSeason === null || !seriesEpisodes?.length) return
+    const destination = getDefaultDestination(downloadConfig)
+    if (!destination || !readyDestinations(downloadConfig, tauri).some((entry) => entry.id === destination.id)) {
+      window.alert('Set up a download destination in Settings → Downloads before batch downloading.')
+      setPreferencesTab('downloads')
+      setPreferencesOpen(true)
+      return
+    }
     const episodes = seriesEpisodes.filter((entry) => entry.season === selectedSeason)
     if (!episodes.length) return
     setBatchDownloading(true)
@@ -657,7 +811,7 @@ export default function App() {
         )
         const found = urlResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
         const best = filterStreamsForProfile(found.sort((a, b) => b.rank - a.rank), resultProfile, preferences.preferCachedResults, activeCustomProfile)[0]
-        if (best) await queueDownload(best, entry.episode, selectedMovie, { season: entry.season, episode: entry.episode })
+        if (best) await queueDownload(best, entry.episode, selectedMovie, { season: entry.season, episode: entry.episode }, destination)
       }
     } finally {
       setBatchDownloading(false)
@@ -669,7 +823,11 @@ export default function App() {
     setDownloadJobs((current) => current.filter((item) => item !== job))
     if (!id) return
     if (tauri) {
-      await import('@tauri-apps/api/core').then(({ invoke }) => invoke('cancel_remote_url_download', { id })).catch(() => undefined)
+      const mode = job.pollConfig?.mode
+      await import('@tauri-apps/api/core').then(({ invoke }) => {
+        if (mode === 'local') return invoke('cancel_local_url_download', { id })
+        return invoke('cancel_remote_url_download', { id })
+      }).catch(() => undefined)
     } else if (!job.status?.complete) {
       await fetch(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => undefined)
     }
@@ -1064,38 +1222,44 @@ export default function App() {
           onPauseJob={pauseDownloadJob}
           onResumeJob={resumeDownloadJob}
         />
+        <DownloadDestinationPicker
+          open={destinationPickerOpen}
+          title={selectedMovie ? `Download “${selectedMovie.name}”` : 'Choose destination'}
+          subtitle={pendingDownload ? 'Pick where this file should be saved.' : undefined}
+          destinations={readyDestinations(downloadConfig, tauri)}
+          loading={Boolean(downloadingStreamKey)}
+          onClose={() => {
+            setDestinationPickerOpen(false)
+            setPendingDownload(null)
+            setDownloadingStreamKey('')
+          }}
+          onSelect={(destination) => { void handleDestinationPick(destination) }}
+          onSetup={() => {
+            setDestinationPickerOpen(false)
+            setPreferencesTab('downloads')
+            setPreferencesOpen(true)
+          }}
+          onManage={() => {
+            setDestinationPickerOpen(false)
+            setPreferencesTab('downloads')
+            setPreferencesOpen(true)
+          }}
+        />
         <PreferencesModal
           open={preferencesOpen}
           tab={preferencesTab}
           plugins={plugins}
           resultProfiles={resultProfiles}
           preferences={preferences}
-          downloadConfig={effectiveDownloadConfig}
+          downloadConfig={downloadConfig}
           torboxApiKey={torboxApiKey}
-          jellyfinApiKey={effectiveDownloadConfig.jellyfinApiKey}
-          serviceStatus={serviceStatus}
-          serviceError={serviceError}
           onClose={() => setPreferencesOpen(false)}
           onTabChange={setPreferencesTab}
           onUpdatePlugin={(pluginId, patch) => setPlugins((current) => current.map((plugin) => (plugin.id === pluginId ? { ...plugin, ...patch } : plugin)))}
           onUpdatePreferences={updatePreferences}
           onUpdateDownloadConfig={updateDownloadConfig}
           onChangeTorboxApiKey={setTorboxApiKey}
-          onChangeJellyfinApiKey={setJellyfinApiKey}
-          onOpenJellyfinSignIn={() => setJellyfinSignInOpen(true)}
-          onTestJellyfin={async () => {
-            setServiceStatus('Checking Jellyfin')
-            setServiceError('')
-            try {
-              const info = tauri
-                ? await import('@tauri-apps/api/core').then(({ invoke }) => invoke<{ name: string; version: string }>('test_jellyfin', { baseUrl: effectiveDownloadConfig.jellyfinUrl, apiKey: effectiveDownloadConfig.jellyfinApiKey }))
-                : await postApi<{ name: string; version: string }>('/api/jellyfin/test', { baseUrl: effectiveDownloadConfig.jellyfinUrl, apiKey: effectiveDownloadConfig.jellyfinApiKey })
-              setServiceStatus(`${info.name} ${info.version}`)
-            } catch (error) {
-              setServiceStatus('')
-              setServiceError(error instanceof Error ? error.message : 'Could not reach Jellyfin.')
-            }
-          }}
+          onOpenJellyfinSignIn={openJellyfinSignIn}
           onExportSettings={handleExportSettings}
           onImportSettings={handleImportSettings}
         />
@@ -1112,20 +1276,25 @@ export default function App() {
         />
       <JellyfinSignInModal
         open={jellyfinSignInOpen}
-        onClose={() => setJellyfinSignInOpen(false)}
+        onClose={() => {
+          setJellyfinSignInOpen(false)
+          setJellyfinSignInCallback(null)
+        }}
         onSubmit={async (username, password) => {
-          setServiceStatus('Signing in to Jellyfin')
-          setServiceError('')
+          const baseUrl = jellyfinSignInBaseUrl || effectiveDownloadConfig.jellyfinUrl
           try {
             const token = tauri
-              ? await import('@tauri-apps/api/core').then(({ invoke }) => invoke<string>('authenticate_jellyfin', { baseUrl: effectiveDownloadConfig.jellyfinUrl, username, password }))
-              : await postApi<{ token: string }>('/api/jellyfin/auth', { baseUrl: effectiveDownloadConfig.jellyfinUrl, username, password }).then((body) => body.token)
-            setJellyfinApiKey(token)
+              ? await import('@tauri-apps/api/core').then(({ invoke }) => invoke<string>('authenticate_jellyfin', { baseUrl, username, password }))
+              : await postApi<{ token: string }>('/api/jellyfin/auth', { baseUrl, username, password }).then((body) => body.token)
+            if (jellyfinSignInCallback) {
+              jellyfinSignInCallback(token)
+            } else {
+              setJellyfinApiKey(token)
+            }
             setJellyfinSignInOpen(false)
-            setServiceStatus('Jellyfin token saved')
+            setJellyfinSignInCallback(null)
           } catch (error) {
-            setServiceStatus('')
-            setServiceError(error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
+            window.alert(error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
           }
         }}
       />

@@ -18,7 +18,13 @@ function isTauriRuntime() {
 }
 
 function canFallback(key: string) {
-  return key === 'torbox_api_key' || key === 'jellyfin_api_key' || key === 'ssh_password'
+  return (
+    key === 'torbox_api_key'
+    || key === 'jellyfin_api_key'
+    || key === 'ssh_password'
+    || key.startsWith('dest_jellyfin_')
+    || key.startsWith('dest_ssh_')
+  )
 }
 
 export async function getSecret(key: string) {
