@@ -75,7 +75,10 @@ export function AppDrawer({
           </button>
         </header>
         {subheader ? <div className="app-drawer-subheader shrink-0">{subheader}</div> : null}
-        <div className={`app-drawer-body min-h-0 ${bodyClassName}`.trim()}>{children}</div>
+        <div className={`app-drawer-body min-h-0 ${bodyClassName}`.trim()}>
+          {children}
+          <div className="app-home-indicator-spacer" aria-hidden="true" />
+        </div>
       </section>
     </div>
   )

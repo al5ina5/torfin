@@ -114,6 +114,15 @@ export function streamSourceLabel(stream: StreamResult) {
   return match?.[1]?.trim() || stream.pluginName
 }
 
+export function streamDirectUrl(stream: StreamResult) {
+  return stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined
+}
+
+export function streamNeedsTorboxResolve(stream: StreamResult) {
+  if (streamDirectUrl(stream)) return false
+  return Boolean(stream.infoHash || stream.url?.startsWith('magnet:') || stream.url?.startsWith('http'))
+}
+
 export function canDownload(stream: StreamResult) {
   return Boolean(stream.infoHash || stream.url?.startsWith('magnet:') || stream.url?.startsWith('http'))
 }

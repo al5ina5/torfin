@@ -56,7 +56,7 @@ export function MovieGrid({
   return (
     <div
       ref={scrollRef}
-      className={`min-h-0 flex-1 overflow-y-auto px-5 py-5${showEmpty ? ' flex flex-col' : ''}`}
+      className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 app-touch-bottom-scroll-padded${showEmpty ? ' flex flex-col' : ''}`}
     >
       {loading ? (
         <MovieGridSkeleton posterSize={posterSize} />

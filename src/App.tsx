@@ -71,6 +71,7 @@ import { isMacTauri, openNativePlayer } from './lib/native-player'
 import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
+import { streamDirectUrl, streamNeedsTorboxResolve } from './lib/streams-display'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
 import { isInWatchlist, loadWatchlist, toggleWatchlist } from './lib/watchlist'
 import type {
@@ -672,9 +673,7 @@ export default function App() {
   const movieErrorMessage = movieError || (catalogError instanceof Error ? catalogError.message : catalogError ? `Could not load ${contentLabelPlural.toLowerCase()}` : '')
   const searchErrorMessage = searchError instanceof Error ? searchError.message : searchError ? 'Search failed' : ''
   const streamEmptyMessage = activePlugins.length === 0
-    ? plugins.some((plugin) => plugin.enabled && pluginNeedsTorboxKey(plugin) && !torboxApiKey.trim())
-      ? 'Enabled sources need a Torbox API key before they can return results. Add it in Settings, then refresh.'
-      : 'No stream sources are enabled. Open Settings and enable at least one source.'
+    ? 'No stream sources are enabled. Open Settings and enable at least one source.'
     : selectedMovie?.type === 'series' && !episodeSelection
       ? 'Choose a season and episode to load streams for this show.'
     : streamErrors.length
@@ -687,7 +686,8 @@ export default function App() {
 
   useMessageToast(movieErrorMessage, 'error', `Could not load ${contentLabelPlural.toLowerCase()}`)
   useMessageToast(searchErrorMessage, 'warning', 'Search failed')
-  useMessageToast(playbackError, 'error', 'Playback failed')
+  const playbackErrorToast = playbackError && !/torbox api key/i.test(playbackError) ? playbackError : ''
+  useMessageToast(playbackErrorToast, 'error', 'Playback failed')
   useMessageToast(episodeLoadError, 'error', 'Could not load episodes')
   useErrorListToast(streamErrors)
 
@@ -846,12 +846,16 @@ export default function App() {
     }
   }
 
+  function promptTorboxApiKeyIfNeeded(stream?: StreamResult) {
+    if (stream && !streamNeedsTorboxResolve(stream)) return true
+    if (torboxApiKey.trim()) return true
+    setTorboxKeyPromptOpen(true)
+    return false
+  }
+
   async function startDownload(stream: StreamResult, index: number) {
     if (!selectedMovie) return
-    if (!torboxApiKey.trim()) {
-      setTorboxKeyPromptOpen(true)
-      return
-    }
+    if (!promptTorboxApiKeyIfNeeded(stream)) return
     if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
       if (preferences.jellyfinDuplicateAction === 'block') return
       if (preferences.jellyfinDuplicateAction === 'ask') {
@@ -1045,6 +1049,7 @@ export default function App() {
 
   async function playStream(stream: StreamResult, index: number) {
     if (!selectedMovie) return
+    if (!promptTorboxApiKeyIfNeeded(stream)) return
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
     activePlaybackStreamRef.current = { stream, index }
     setResolvingStreamKey(key)
@@ -1058,7 +1063,7 @@ export default function App() {
     setSelectedSubtitleIndex(null)
     const resumeAt = getPlaybackResumePosition(selectedMovie, episodeSelection?.season, episodeSelection?.episode)
     try {
-      const directUrl = stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined
+      const directUrl = streamDirectUrl(stream)
       const sourceUrl = await resolveStreamUrl(torboxApiKey, stream, directUrl)
       const title = `${selectedMovie.name}${episodePlaybackLabel()} - ${stream.pluginName}`
       setCurrentSourceUrl(sourceUrl)
@@ -1152,10 +1157,12 @@ export default function App() {
 
   useEffect(() => {
     if (!pendingAutoPlayRef.current || streamsLoading || !compactStreams.length) return
+    const stream = compactStreams[0]!
+    if (!torboxApiKey.trim() && streamNeedsTorboxResolve(stream)) return
     pendingAutoPlayRef.current = false
     setPlaybackStatus('')
-    void playStream(compactStreams[0]!, 0)
-  }, [compactStreams, streamsLoading, episodeSelection?.episode, episodeSelection?.season])
+    void playStream(stream, 0)
+  }, [compactStreams, streamsLoading, episodeSelection?.episode, episodeSelection?.season, torboxApiKey])
 
   useEffect(() => {
     autoPlayedStreamKeyRef.current = null
@@ -1167,11 +1174,14 @@ export default function App() {
     if (pendingAutoPlayRef.current) return
     if (playbackUrl || resolvingStreamKey || playbackStatus) return
 
+    const stream = compactStreams[0]!
+    if (!torboxApiKey.trim() && streamNeedsTorboxResolve(stream)) return
+
     const key = `${selectedMovie.id}:${selectedSeason ?? ''}:${selectedEpisode ?? ''}`
     if (autoPlayedStreamKeyRef.current === key) return
 
     autoPlayedStreamKeyRef.current = key
-    void playStream(compactStreams[0]!, 0)
+    void playStream(stream, 0)
   }, [
     compactStreams,
     playbackStatus,
@@ -1182,10 +1192,12 @@ export default function App() {
     selectedMovie,
     selectedSeason,
     streamsLoading,
+    torboxApiKey,
   ])
 
   async function downloadSeason() {
     if (!selectedMovie || selectedMovie.type !== 'series' || selectedSeason === null || !seriesEpisodes?.length) return
+    if (!promptTorboxApiKeyIfNeeded()) return
     const destination = getDefaultDestination(downloadConfig)
     if (!destination || !readyDestinations(downloadConfig, tauri).some((entry) => entry.id === destination.id)) {
       openSettings('downloads')
@@ -1775,7 +1787,7 @@ export default function App() {
       <ConfirmationDialog
         open={torboxKeyPromptOpen}
         title="Torbox API key required"
-        message="Downloads need a Torbox API key to resolve streams. Add your key in Settings → Plugins to continue."
+        message="Playing and downloading need a Torbox API key to resolve streams. Add your key in Settings → Plugins to continue."
         confirmLabel="Open Settings"
         confirmTone="primary"
         onCancel={() => setTorboxKeyPromptOpen(false)}

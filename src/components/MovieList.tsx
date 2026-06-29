@@ -99,7 +99,7 @@ export function MovieList({
   return (
     <div
       ref={scrollRef}
-      className={`@container min-h-0 flex-1 overflow-y-auto px-3 py-3${showEmpty ? ' flex flex-col' : ''}`}
+      className={`@container min-h-0 flex-1 overflow-y-auto px-3 py-3 app-touch-bottom-scroll-padded-sm${showEmpty ? ' flex flex-col' : ''}`}
     >
       {loading ? (
         <ListSkeleton />
