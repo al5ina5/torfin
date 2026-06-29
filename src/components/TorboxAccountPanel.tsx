@@ -43,9 +43,7 @@ export function TorboxAccountPanel({ apiKey }: TorboxAccountPanelProps) {
         </button>
       </div>
 
-      {!apiKey.trim() ? (
-        <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">Add your Torbox API key above to see plan and torrent status.</p>
-      ) : error ? (
+      {error ? (
         <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">Could not load account details. Check the notification for details.</p>
       ) : data ? (
         <div className="grid grid-cols-2 gap-2 text-[11px]">

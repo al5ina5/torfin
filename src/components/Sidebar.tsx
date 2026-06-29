@@ -20,6 +20,7 @@ type SidebarProps = {
   preferencesOpen: boolean
   downloadsOpen: boolean
   legalOpen: boolean
+  showDownloads: boolean
   downloadSummary: DownloadSidebarSummary
   onContentTypeChange: (type: ContentType) => void
   onCatalogChange: (id: string) => void
@@ -70,6 +71,7 @@ function SidebarContent({
   preferencesOpen,
   downloadsOpen,
   legalOpen,
+  showDownloads,
   downloadSummary,
   onContentTypeChange,
   onCatalogChange,
@@ -260,6 +262,7 @@ function SidebarContent({
       </nav>
 
       <div className="shrink-0 border-t border-[var(--mac-divider,var(--mac-border))] p-2">
+        {showDownloads ? (
         <AppLink
           href={appRouteToUrl(withModal(browseRoute(contentType, catalogId), { kind: 'downloads' }))}
           onNavigate={() => handleNavigate(onOpenDownloads)}
@@ -297,6 +300,7 @@ function SidebarContent({
             </span>
           ) : null}
         </AppLink>
+        ) : null}
         <AppLink
           href={appRouteToUrl(withModal(browseRoute(contentType, catalogId), { kind: 'settings', tab: 'general' }))}
           onNavigate={() => handleNavigate(onOpenPreferences)}

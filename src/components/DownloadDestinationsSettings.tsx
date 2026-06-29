@@ -93,14 +93,6 @@ export function DownloadDestinationsSettings({
           </button>
         </div>
 
-        {!isDesktop ? (
-          <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 py-2.5 text-[11px] leading-4 text-[var(--mac-secondary)]">
-            <span className="font-semibold text-[var(--mac-text)]">Remote server (SSH)</span>
-            {' — '}
-            only in the desktop app. Browsers cannot open SSH connections, so use the Torfin Mac/PC app to download to a home server or NAS.
-          </div>
-        ) : null}
-
         {!downloadConfig.destinations.length ? (
           <div className="rounded-xl border border-dashed border-[var(--mac-border)] bg-[var(--mac-surface)] p-6 text-center">
             <FolderDown className="mx-auto mb-2 text-[var(--mac-tertiary)]" size={24} />

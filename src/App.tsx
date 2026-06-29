@@ -63,9 +63,11 @@ import {
   mergeServerDownloadJobs,
   qbittorrentPayload,
   serverDownloadJellyfinPayload,
+  shouldShowDownloadsUi,
   withDownloadTimestamp,
 } from './lib/downloads'
-import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
+import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isGenreCatalogId, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
+import { genreToCatalogId } from './lib/genres'
 import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery, setRecentViewsLimit } from './lib/history'
 import { hydrateUrl, hasEnabledStreamSources, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
@@ -79,6 +81,7 @@ import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinSeasonEpisodes, fetchJellyfinFavorites, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { streamDirectUrl, streamNeedsTorboxResolve } from './lib/streams-display'
+import { buildMagnetLink, saveTorrentExport, shouldExportTorrent, usesMediaImportPath } from './lib/torrent-export'
 import { STORAGE_KEYS, loadStoredJson, loadStoredString, saveStoredJson, saveStoredString } from './lib/storage'
 import { isInWatchlist, loadWatchlist, mergeWatchlist, toggleWatchlist } from './lib/watchlist'
 import type {
@@ -88,6 +91,7 @@ import type {
   DownloadDestination,
   DownloadJob,
   DownloadSort,
+  DownloadStatus,
   FilterPreset,
   JellyfinLibraryMatch,
   MediaInfo,
@@ -286,6 +290,7 @@ export default function App() {
   const contentLabelSingular = contentType === 'series' ? 'Show' : 'Movie'
   const activePlugins = useMemo(() => plugins.filter((plugin) => plugin.enabled && plugin.streamUrlTemplate.trim() && (!pluginNeedsTorboxKey(plugin) || torboxApiKey.trim())), [plugins, torboxApiKey])
   const showStreamResults = useMemo(() => hasEnabledStreamSources(plugins), [plugins])
+  const showDownloadsUi = useMemo(() => shouldShowDownloadsUi(plugins, downloadJobs), [plugins, downloadJobs])
   const shellStyle = {
     '--left-sidebar-width': `${layout.leftSidebarWidth}px`,
     '--right-sidebar-width': `${layout.rightSidebarWidth}px`,
@@ -381,6 +386,10 @@ export default function App() {
     const accepted = loadStoredString(STORAGE_KEYS.legalNoticeAccepted, '') === '1'
     setFirstRunOpen(!accepted)
   }, [secretsLoaded])
+
+  useEffect(() => {
+    if (!showDownloadsUi && route.modal?.kind === 'downloads') closeModal()
+  }, [showDownloadsUi, route.modal?.kind, closeModal])
 
   useEffect(() => {
     switch (route.modal?.kind) {
@@ -852,13 +861,22 @@ export default function App() {
     searchRef.current?.focus()
   }
 
+  function handleBrowseGenre(genre: string) {
+    const nextCatalogId = genreToCatalogId(genre)
+    if (!isGenreCatalogId(nextCatalogId)) return
+    setMovieFilters(defaultMovieFilters)
+    navigateBrowse(contentType, nextCatalogId)
+  }
+
   function handleContentTypeChange(next: ContentType) {
-    if (route.presetId) setMovieFilters(defaultMovieFilters)
+    setMovieFilters(defaultMovieFilters)
+    setQuery('')
     navigateBrowse(next, route.presetId ? 'trending' : catalogId)
   }
 
   function handleCatalogChange(nextCatalogId: string) {
-    if (route.presetId) setMovieFilters(defaultMovieFilters)
+    setMovieFilters(defaultMovieFilters)
+    setQuery('')
     navigateBrowse(contentType, nextCatalogId)
   }
 
@@ -870,6 +888,84 @@ export default function App() {
     setJellyfinSignInBaseUrl(baseUrl)
     setJellyfinSignInCallback(() => onToken)
     setJellyfinSignInOpen(true)
+  }
+
+  async function exportTorrent(
+    stream: StreamResult,
+    index: number,
+    movie = selectedMovie,
+    episode = episodeSelection,
+  ) {
+    if (!movie) return
+    const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
+    const id = `torrent-export-${Date.now()}`
+    const filename = `${makeDownloadFilename(movie, stream, episode).replace(/\.[^.]+$/, '')}.magnet`
+    setDownloadingStreamKey(key)
+    openDownloads()
+    setDownloadJobs((current) => [
+      {
+        kind: 'torrent_export',
+        pendingId: id,
+        createdAt: new Date().toISOString(),
+        movie,
+        stream,
+        episodeSeason: episode?.season,
+        episodeNumber: episode?.episode,
+      },
+      ...current,
+    ])
+    try {
+      const magnet = buildMagnetLink(stream)
+      const savePath = await saveTorrentExport(filename, magnet)
+      const status: DownloadStatus = {
+        id,
+        name: filename,
+        progress: 1,
+        state: 'complete',
+        speed: 0,
+        eta: -1,
+        size: magnet.length,
+        downloaded: magnet.length,
+        complete: true,
+        savePath,
+        targetPath: savePath,
+        engine: 'torrent_export',
+        createdAt: new Date().toISOString(),
+        statusMessage: 'Torrent file saved for use in your torrent client.',
+      }
+      setDownloadJobs((current) => [
+        {
+          kind: 'torrent_export',
+          pendingId: id,
+          createdAt: new Date().toISOString(),
+          movie,
+          stream,
+          status,
+          episodeSeason: episode?.season,
+          episodeNumber: episode?.episode,
+        },
+        ...current.filter((job) => job.pendingId !== id),
+      ])
+      toast.success('Torrent saved', movie.name)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not save torrent.'
+      setDownloadJobs((current) => [
+        {
+          kind: 'torrent_export',
+          pendingId: id,
+          createdAt: new Date().toISOString(),
+          movie,
+          stream,
+          error: message,
+          episodeSeason: episode?.season,
+          episodeNumber: episode?.episode,
+        },
+        ...current.filter((job) => job.pendingId !== id),
+      ])
+      toast.error('Could not save torrent', message)
+    } finally {
+      setDownloadingStreamKey((current) => (current === key ? '' : current))
+    }
   }
 
   async function beginDownload(stream: StreamResult, index: number, destination: DownloadDestination) {
@@ -895,6 +991,7 @@ export default function App() {
     const pollConfig = buildPollConfig(downloadConfig, destination, secrets, jellyfinKey, movie)
     setDownloadJobs((current) => [
       {
+        kind: 'media_import',
         pendingId: id,
         createdAt: new Date().toISOString(),
         movie,
@@ -933,6 +1030,7 @@ export default function App() {
           })
       setDownloadJobs((current) => [
         {
+          kind: 'media_import',
           pendingId: id,
           movie,
           stream,
@@ -953,6 +1051,7 @@ export default function App() {
       const message = error instanceof Error ? error.message : 'Could not start download.'
       setDownloadJobs((current) => [
         {
+          kind: 'media_import',
           pendingId: id,
           movie,
           stream,
@@ -973,6 +1072,7 @@ export default function App() {
   }
 
   function promptTorboxApiKeyIfNeeded(stream?: StreamResult) {
+    if (stream && streamDirectUrl(stream)) return true
     if (stream && !streamNeedsTorboxResolve(stream)) return true
     if (torboxApiKey.trim()) return true
     setTorboxKeyPromptOpen(true)
@@ -981,6 +1081,14 @@ export default function App() {
 
   async function startDownload(stream: StreamResult, index: number) {
     if (!selectedMovie) return
+
+    if (shouldExportTorrent(torboxApiKey, stream)) {
+      await exportTorrent(stream, index)
+      return
+    }
+
+    if (!usesMediaImportPath(torboxApiKey, stream)) return
+
     if (!promptTorboxApiKeyIfNeeded(stream)) return
     if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
       if (preferences.jellyfinDuplicateAction === 'block') return
@@ -1175,7 +1283,10 @@ export default function App() {
 
   async function playStream(stream: StreamResult, index: number) {
     if (!selectedMovie) return
-    if (!promptTorboxApiKeyIfNeeded(stream)) return
+    if (streamNeedsTorboxResolve(stream) && !streamDirectUrl(stream) && !torboxApiKey.trim()) {
+      setTorboxKeyPromptOpen(true)
+      return
+    }
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
     activePlaybackStreamRef.current = { stream, index }
     setResolvingStreamKey(key)
@@ -1284,7 +1395,7 @@ export default function App() {
   useEffect(() => {
     if (!pendingAutoPlayRef.current || streamsLoading || !compactStreams.length) return
     const stream = compactStreams[0]!
-    if (!torboxApiKey.trim() && streamNeedsTorboxResolve(stream)) return
+    if (streamNeedsTorboxResolve(stream) && !streamDirectUrl(stream) && !torboxApiKey.trim()) return
     pendingAutoPlayRef.current = false
     setPlaybackStatus('')
     void playStream(stream, 0)
@@ -1301,7 +1412,7 @@ export default function App() {
     if (playbackUrl || resolvingStreamKey || playbackStatus) return
 
     const stream = compactStreams[0]!
-    if (!torboxApiKey.trim() && streamNeedsTorboxResolve(stream)) return
+    if (streamNeedsTorboxResolve(stream) && !streamDirectUrl(stream) && !torboxApiKey.trim()) return
 
     const key = `${selectedMovie.id}:${selectedSeason ?? ''}:${selectedEpisode ?? ''}`
     if (autoPlayedStreamKeyRef.current === key) return
@@ -1384,6 +1495,15 @@ export default function App() {
   }
 
   async function retryDownloadJob(job: DownloadJob) {
+    if (job.kind === 'torrent_export') {
+      markDownloadDismissed(dismissedDownloadIdsRef.current, job)
+      setDownloadJobs((current) => current.filter((item) => !isDownloadDismissed(item, dismissedDownloadIdsRef.current)))
+      const episode = job.episodeSeason != null && job.episodeNumber != null
+        ? { season: job.episodeSeason, episode: job.episodeNumber }
+        : undefined
+      await exportTorrent(job.stream, job.episodeNumber ?? 0, job.movie, episode)
+      return
+    }
     const destination = job.destinationId
       ? downloadConfig.destinations.find((entry) => entry.id === job.destinationId)
       : getDefaultDestination(downloadConfig)
@@ -1690,6 +1810,7 @@ export default function App() {
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
             legalOpen={legalOpen}
+            showDownloads={showDownloadsUi}
             downloadSummary={downloadSummary}
             onContentTypeChange={handleContentTypeChange}
             onCatalogChange={handleCatalogChange}
@@ -1717,6 +1838,7 @@ export default function App() {
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
             legalOpen={legalOpen}
+            showDownloads={showDownloadsUi}
             downloadSummary={downloadSummary}
             onContentTypeChange={handleContentTypeChange}
             onCatalogChange={handleCatalogChange}
@@ -1908,6 +2030,7 @@ export default function App() {
           similarMovies={similarMovies}
           onSelectSimilar={handleSelectMovie}
           onSearchPerson={handleSearchPerson}
+          onBrowseGenre={handleBrowseGenre}
           jellyfinMatch={jellyfinMatch}
           jellyfinLoading={jellyfinLoading}
           jellyfinUrl={effectiveDownloadConfig.jellyfinUrl}
@@ -1950,6 +2073,7 @@ export default function App() {
           onCancelNextEpisode={() => setNextEpisodePrompt(null)}
           resolvingKey={resolvingStreamKey}
           downloadingKey={downloadingStreamKey}
+          torboxApiKey={torboxApiKey}
           onChooseAudio={(value) => { void chooseAudioTrack(value) }}
           onChooseSubtitle={(value) => { void chooseSubtitleTrack(value) }}
           onRefreshStreams={() => { void refreshStreams() }}

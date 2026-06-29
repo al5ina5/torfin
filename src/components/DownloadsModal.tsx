@@ -125,6 +125,7 @@ export function DownloadsModal({
               const stateLabel = downloadStatusLabel(job)
               const failed = Boolean(job.error || status?.state.startsWith('error:'))
               const jellyfinReady = stateLabel === 'available in jellyfin'
+              const isTorrentExport = job.kind === 'torrent_export'
               const isResolving = !status && !job.error
               return (
                 <div key={status?.id || job.pendingId || `${job.movie.id}-${job.stream.title}`} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-2.5">
@@ -134,6 +135,10 @@ export function DownloadsModal({
                       {isActive || isResolving ? (
                         <div className="absolute inset-0 grid place-items-center bg-black/40">
                           <Loader2 className="animate-spin text-white" size={14} />
+                        </div>
+                      ) : isTorrentExport && status?.complete ? (
+                        <div className="absolute inset-0 grid place-items-center bg-black/25 text-[10px] font-bold text-white">
+                          .mag
                         </div>
                       ) : null}
                     </div>
@@ -237,7 +242,7 @@ export function DownloadsModal({
                       ) : job.error ? null : (
                         <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--mac-secondary)]">
                           <Loader2 className="animate-spin text-[var(--mac-accent)]" size={13} />
-                          Resolving Torbox result
+                          {isTorrentExport ? 'Saving torrent file' : 'Resolving debrid link'}
                         </div>
                       )}
                     </div>
@@ -267,7 +272,7 @@ export function DownloadsModal({
           </div>
         ) : (
           <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3 text-[12px] text-[var(--mac-secondary)]">
-            Start a download from a stream result.
+            Save a torrent from stream results, or import a file to your library when debrid is connected.
           </div>
         )}
       </div>

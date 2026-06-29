@@ -12,7 +12,7 @@ export function SettingsSection({
   first?: boolean
 }) {
   return (
-    <section className={first ? 'space-y-3' : 'space-y-3 border-t border-[var(--mac-border)] pt-5'}>
+    <section className={first ? 'space-y-3 pb-5' : 'space-y-3 border-t border-[var(--mac-border)] py-5'}>
       <div>
         <h3 className="text-[12px] font-semibold uppercase tracking-wide text-[var(--mac-secondary)]">{title}</h3>
         {description ? <p className="mt-1 text-[11px] leading-4 text-[var(--mac-secondary)]">{description}</p> : null}

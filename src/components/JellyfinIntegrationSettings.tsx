@@ -52,7 +52,7 @@ export function JellyfinIntegrationSettings({
         <div>
           <div className="text-[13px] font-semibold">Jellyfin</div>
           <p className="mt-0.5 text-[11px] leading-4 text-[var(--mac-secondary)]">
-            Optional. Connect Jellyfin to check if titles are already in your library and refresh the library after downloads finish. This is separate from where files are saved.
+            Connect Jellyfin to check if titles are already in your library and refresh the library after downloads finish. This is separate from where files are saved.
           </p>
         </div>
       </div>
@@ -98,62 +98,63 @@ export function JellyfinIntegrationSettings({
       </div>
 
       {configured ? (
-        <p className="mt-3 text-[10px] text-[var(--mac-tertiary)]">Jellyfin configured — library lookup and refresh are available.</p>
-      ) : null}
+        <>
+          <p className="mt-3 text-[10px] text-[var(--mac-tertiary)]">Jellyfin configured — library lookup and refresh are available.</p>
 
-      <label className="mt-3 flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 py-2 text-[13px]">
-        <div>
-          <span>Refresh library after download</span>
-          <p className="text-[10px] text-[var(--mac-secondary)]">Scans new files into Jellyfin when a download completes.</p>
-        </div>
-        <input
-          type="checkbox"
-          checked={downloadConfig.refreshJellyfinOnComplete}
-          onChange={(event) => onPatchDownloadConfig({ refreshJellyfinOnComplete: event.target.checked })}
-          disabled={!configured}
-          className="size-4 accent-[var(--mac-accent)] disabled:opacity-40"
-        />
-      </label>
+          <label className="mt-3 flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 py-2 text-[13px]">
+            <div>
+              <span>Refresh library after download</span>
+              <p className="text-[10px] text-[var(--mac-secondary)]">Scans new files into Jellyfin when a download completes.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={downloadConfig.refreshJellyfinOnComplete}
+              onChange={(event) => onPatchDownloadConfig({ refreshJellyfinOnComplete: event.target.checked })}
+              className="size-4 accent-[var(--mac-accent)]"
+            />
+          </label>
 
-      <div className="mt-3 space-y-2 border-t border-[var(--mac-border)] pt-3">
-        <SettingsField
-          label="Duplicate downloads"
-          hint="What to do when a title already exists in your Jellyfin library at equal or higher quality."
-        >
-          <SettingsSelect
-            value={preferences.jellyfinDuplicateAction}
-            onChange={(value) => onUpdatePreferences({ jellyfinDuplicateAction: value as JellyfinDuplicateAction })}
-          >
-            <option value="ask">Ask before downloading</option>
-            <option value="allow">Always allow</option>
-            <option value="block">Skip download</option>
-          </SettingsSelect>
-        </SettingsField>
-        <SettingsToggle
-          label="Show library badges"
-          hint="Display quality badges on posters when a title is already in your Jellyfin library."
-          checked={preferences.jellyfinShowLibraryBadges}
-          onChange={(jellyfinShowLibraryBadges) => onUpdatePreferences({ jellyfinShowLibraryBadges })}
-        />
-        <SettingsToggle
-          label="Skip owned episodes in season downloads"
-          hint="When downloading a full season, skip episodes that are already in Jellyfin."
-          checked={preferences.jellyfinSkipOwnedEpisodes}
-          onChange={(jellyfinSkipOwnedEpisodes) => onUpdatePreferences({ jellyfinSkipOwnedEpisodes })}
-        />
-        {onImportJellyfinWatchlist ? (
-          <div className="pt-1">
-            <SettingsHint>Merge Jellyfin favorites into your local watchlist (by IMDb id).</SettingsHint>
-            <button
-              type="button"
-              onClick={onImportJellyfinWatchlist}
-              className="mt-2 h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+          <div className="mt-3 space-y-2 border-t border-[var(--mac-border)] pt-3">
+            <SettingsField
+              label="Duplicate downloads"
+              hint="What to do when a title already exists in your Jellyfin library at equal or higher quality."
             >
-              Import Jellyfin favorites
-            </button>
+              <SettingsSelect
+                value={preferences.jellyfinDuplicateAction}
+                onChange={(value) => onUpdatePreferences({ jellyfinDuplicateAction: value as JellyfinDuplicateAction })}
+              >
+                <option value="ask">Ask before downloading</option>
+                <option value="allow">Always allow</option>
+                <option value="block">Skip download</option>
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsToggle
+              label="Show library badges"
+              hint="Display quality badges on posters when a title is already in your Jellyfin library."
+              checked={preferences.jellyfinShowLibraryBadges}
+              onChange={(jellyfinShowLibraryBadges) => onUpdatePreferences({ jellyfinShowLibraryBadges })}
+            />
+            <SettingsToggle
+              label="Skip owned episodes in season downloads"
+              hint="When downloading a full season, skip episodes that are already in Jellyfin."
+              checked={preferences.jellyfinSkipOwnedEpisodes}
+              onChange={(jellyfinSkipOwnedEpisodes) => onUpdatePreferences({ jellyfinSkipOwnedEpisodes })}
+            />
+            {onImportJellyfinWatchlist ? (
+              <div className="pt-1">
+                <SettingsHint>Merge Jellyfin favorites into your local watchlist (by IMDb id).</SettingsHint>
+                <button
+                  type="button"
+                  onClick={onImportJellyfinWatchlist}
+                  className="mt-2 h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+                >
+                  Import Jellyfin favorites
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
-      </div>
+        </>
+      ) : null}
     </div>
   )
 }

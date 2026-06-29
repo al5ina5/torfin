@@ -14,16 +14,21 @@ export const FIRST_RUN_DISCLAIMER_BULLETS = [
 export const LEGAL_NOTICE_ACK_LABEL =
   'I understand Torfin does not provide or host media. I am responsible for how I use it and for the third-party services I connect.'
 
-export const THIRD_PARTY_STREAM_SOURCES_HINT =
-  'Stream addons are third-party services not operated by Torfin. Enable only sources you are authorized to use. Torfin does not index or host torrents.'
+export const CONNECTED_SERVICES_HINT =
+  'Optional accounts for debrid and library management. Torfin does not host content — you are responsible for complying with each service\'s terms.'
+
+export const INDEXER_SOURCES_HINT =
+  'Optional Stremio-compatible metadata endpoints. Toggle sources on or off — Torfin forwards title lookups only; it does not host or index content.'
+
+export const THIRD_PARTY_STREAM_SOURCES_HINT = INDEXER_SOURCES_HINT
 
 export const DEBRID_SERVICE_HINT =
   'Torbox is a third-party debrid service. Torfin sends torrent references from your chosen addons to your Torbox account for resolution. You must comply with Torbox’s terms of service.'
 
-export const THIRD_PARTY_ADDON_ENABLE_TITLE = 'Enable third-party addon?'
+export const THIRD_PARTY_ADDON_ENABLE_TITLE = 'Enable this index source?'
 
-export function thirdPartyAddonEnableMessage(addonName: string) {
-  return `${addonName} is a third-party service not operated by Torfin. Torfin only forwards metadata requests to URLs you configure. You are responsible for complying with applicable law and ${addonName}’s terms. Enable only if you are authorized to use this source.`
+export function thirdPartyAddonEnableMessage(indexLabel: string) {
+  return `${indexLabel} is a third-party metadata endpoint not operated by Torfin. Torfin only forwards lookup requests to URLs you configure. You are responsible for complying with applicable law and the endpoint operator's terms. Enable only if you are authorized to use this source.`
 }
 
 export const LEGAL_NOTICE_SECTIONS = [

@@ -8,7 +8,9 @@ import {
   normalizeMovie,
   normalizeSeriesEpisodes,
   trailerSearchUrl,
+  youtubeTrailerEmbedUrl,
   youtubeTrailerUrl,
+  youtubeVideoIdFromUrl,
 } from '../cinemeta'
 
 describe('catalogPageUrl', () => {
@@ -98,6 +100,58 @@ describe('enrichMovieFromMeta', () => {
     const enriched = enrichMovieFromMeta(baseMovie, { meta: { cast: ['Leonardo DiCaprio'] } })
 
     expect(enriched.trailer).toBe(trailerSearchUrl('Inception', '2010', 'movie'))
+  })
+
+  it('enriches additional cinemeta metadata fields', () => {
+    const enriched = enrichMovieFromMeta(baseMovie, {
+      meta: {
+        writer: ['Christopher Nolan'],
+        country: 'United Kingdom, United States',
+        awards: 'Won 4 Oscars.',
+        logo: 'https://images.metahub.space/logo/medium/tt1375666/img',
+        released: '2010-07-16T00:00:00.000Z',
+        dvdRelease: '2013-06-20T00:00:00.000Z',
+        moviedb_id: 27205,
+        genres: ['Action', 'Sci-Fi'],
+        popularities: { trakt: 85, moviedb: 38.8, stremio: 1.29 },
+        links: [
+          { category: 'imdb', url: 'https://imdb.com/title/tt1375666' },
+          { category: 'share', url: 'https://www.strem.io/s/movie/inception-1375666' },
+          { category: 'Cast', name: 'Leonardo DiCaprio' },
+          { category: 'Directors', name: 'Christopher Nolan' },
+        ],
+      },
+    })
+
+    expect(enriched).toMatchObject({
+      writer: ['Christopher Nolan'],
+      country: 'United Kingdom, United States',
+      awards: 'Won 4 Oscars.',
+      logo: 'https://images.metahub.space/logo/medium/tt1375666/img',
+      genres: ['Action', 'Sci-Fi'],
+      imdbUrl: 'https://imdb.com/title/tt1375666',
+      shareUrl: 'https://www.strem.io/s/movie/inception-1375666',
+      movieDbId: 27205,
+      cast: ['Leonardo DiCaprio'],
+      director: ['Christopher Nolan'],
+      popularities: { trakt: 85, moviedb: 38.8, stremio: 1.29 },
+    })
+    expect(enriched.released).toMatch(/2010/)
+    expect(enriched.dvdRelease).toMatch(/2013/)
+    expect(enriched.externalLinks?.some((link) => link.id === 'tmdb')).toBe(true)
+  })
+})
+
+describe('youtubeVideoIdFromUrl', () => {
+  it('parses common youtube trailer urls', () => {
+    expect(youtubeVideoIdFromUrl('https://www.youtube.com/watch?v=cdx31ak4KbQ')).toBe('cdx31ak4KbQ')
+    expect(youtubeVideoIdFromUrl('https://youtu.be/cdx31ak4KbQ')).toBe('cdx31ak4KbQ')
+    expect(youtubeVideoIdFromUrl('https://www.youtube-nocookie.com/embed/cdx31ak4KbQ')).toBeUndefined()
+    expect(youtubeVideoIdFromUrl('https://www.youtube.com/results?search_query=inception')).toBeUndefined()
+  })
+
+  it('builds privacy-friendly embed urls', () => {
+    expect(youtubeTrailerEmbedUrl('cdx31ak4KbQ')).toContain('youtube-nocookie.com/embed/cdx31ak4KbQ')
   })
 })
 

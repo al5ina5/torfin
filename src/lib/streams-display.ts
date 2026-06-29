@@ -123,6 +123,29 @@ export function streamNeedsTorboxResolve(stream: StreamResult) {
   return Boolean(stream.infoHash || stream.url?.startsWith('magnet:') || stream.url?.startsWith('http'))
 }
 
+export function canPlayStream(stream: StreamResult, torboxApiKey: string) {
+  if (streamDirectUrl(stream)) return true
+  if (!streamNeedsTorboxResolve(stream)) return false
+  return Boolean(torboxApiKey.trim())
+}
+
+export function downloadActionTitle(torboxApiKey: string, stream: StreamResult) {
+  if (shouldExportTorrentLabel(torboxApiKey, stream)) return 'Save torrent file'
+  return 'Import to library'
+}
+
+export function playActionTitle(stream: StreamResult, torboxApiKey: string) {
+  if (canPlayStream(stream, torboxApiKey)) {
+    return streamDirectUrl(stream) ? 'Play stream' : 'Play with debrid'
+  }
+  if (streamNeedsTorboxResolve(stream) && !streamDirectUrl(stream)) return 'Connect debrid in Settings to play'
+  return 'No playable stream data'
+}
+
+function shouldExportTorrentLabel(torboxApiKey: string, stream: StreamResult) {
+  return Boolean((stream.infoHash || stream.url?.startsWith('magnet:')) && !torboxApiKey.trim())
+}
+
 export function canDownload(stream: StreamResult) {
   return Boolean(stream.infoHash || stream.url?.startsWith('magnet:') || stream.url?.startsWith('http'))
 }

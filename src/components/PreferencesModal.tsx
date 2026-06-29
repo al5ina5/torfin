@@ -5,6 +5,7 @@ import { defaultCustomProfile } from '../lib/custom-profiles'
 import { isMacTauri, listNativePlayers, type NativePlayerOption } from '../lib/native-player'
 import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
 import {
+  INDEXER_SOURCES_HINT,
   THIRD_PARTY_ADDON_ENABLE_TITLE,
   thirdPartyAddonEnableMessage,
 } from '../lib/legal-notice'
@@ -24,6 +25,7 @@ import type {
 import { AppModal } from './AppModal'
 import { DownloadDestinationsSettings } from './DownloadDestinationsSettings'
 import { IntegrationsSettings } from './IntegrationsSettings'
+import { StreamIndexerSettings } from './StreamIndexerSettings'
 import {
   SettingsField,
   SettingsHint,
@@ -441,21 +443,29 @@ export function PreferencesModal({
 
       {tab === 'integrations' ? (
         <div className="space-y-0">
-          <SettingsSection title="Connected Services" first>
+          <SettingsSection
+            title="Connected Services"
+            description="Accounts you authenticate with API keys."
+            first
+          >
             <IntegrationsSettings
-              plugins={plugins}
               torboxApiKey={torboxApiKey}
               jellyfinApiKey={jellyfinApiKey}
               downloadConfig={downloadConfig}
               preferences={preferences}
-              onUpdatePlugin={onUpdatePlugin}
               onChangeTorboxApiKey={onChangeTorboxApiKey}
               onChangeJellyfinApiKey={onChangeJellyfinApiKey}
               onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
               onUpdatePreferences={onUpdatePreferences}
               onOpenJellyfinSignIn={onOpenJellyfinSignIn}
-              onPluginEnabledChange={handlePluginEnabledChange}
               onImportJellyfinWatchlist={onImportJellyfinWatchlist}
+            />
+          </SettingsSection>
+          <SettingsSection title="Result Indexers" description={INDEXER_SOURCES_HINT}>
+            <StreamIndexerSettings
+              plugins={plugins}
+              onUpdatePlugin={onUpdatePlugin}
+              onPluginEnabledChange={handlePluginEnabledChange}
             />
           </SettingsSection>
         </div>

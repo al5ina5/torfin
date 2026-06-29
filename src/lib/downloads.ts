@@ -1,6 +1,7 @@
-import type { DownloadConfig, DownloadDestination, DownloadJob, DownloadPollConfig, DownloadSort, DownloadStatus, Movie, StreamResult } from '../types'
+import type { DownloadConfig, DownloadDestination, DownloadJob, DownloadPollConfig, DownloadSort, DownloadStatus, Movie, PluginConfig, StreamResult } from '../types'
 import { destinationRootForMovie } from './download-destinations'
 import type { DestinationSecrets } from './download-destinations'
+import { hasEnabledStreamSources } from './plugins'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson } from './storage'
 
 export const defaultDownloadConfig: DownloadConfig = {
@@ -80,6 +81,11 @@ export function jellyfinSyncConfigured(job: DownloadJob) {
 
 export function downloadStatusLabel(job: DownloadJob) {
   const status = job.status
+  if (job.kind === 'torrent_export') {
+    if (job.error || status?.state.startsWith('error:')) return 'failed'
+    if (status?.complete) return 'torrent saved'
+    return 'saving torrent'
+  }
   if (!status) return job.error ? 'failed' : 'queued'
   if (isDownloadJobPaused(job)) return 'paused'
   if (status.state.startsWith('error:')) return 'failed'
@@ -360,6 +366,12 @@ export function downloadSidebarSummary(jobs: DownloadJob[]): DownloadSidebarSumm
     topProgress,
     activeCount: downloading.length,
   }
+}
+
+/** Show download queue UI when stream sources are enabled or tracked jobs still exist. */
+export function shouldShowDownloadsUi(plugins: PluginConfig[], jobs: DownloadJob[]) {
+  if (hasEnabledStreamSources(plugins)) return true
+  return jobs.length > 0
 }
 
 export function etaLabel(seconds: number) {

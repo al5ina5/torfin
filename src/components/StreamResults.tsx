@@ -4,7 +4,10 @@ import { isStreamCached } from '../lib/streams'
 
 import {
   canDownload,
+  canPlayStream,
   compactStreamTitle,
+  downloadActionTitle,
+  playActionTitle,
   streamMetaSummary,
   streamSourceLabel,
 } from '../lib/streams-display'
@@ -23,6 +26,7 @@ type StreamResultsProps = {
   onRefresh: () => void
   resolvingKey: string
   downloadingKey: string
+  torboxApiKey: string
   onPlay: (stream: StreamResult, index: number) => void
   onDownload: (stream: StreamResult, index: number) => void
 }
@@ -40,6 +44,7 @@ export function StreamResults({
   onRefresh,
   resolvingKey,
   downloadingKey,
+  torboxApiKey,
   onPlay,
   onDownload,
 }: StreamResultsProps) {
@@ -104,7 +109,7 @@ export function StreamResults({
           <div className="divide-y divide-[var(--mac-border)]">
             {visibleStreams.map((stream, index) => {
               const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
-              const playable = Boolean(stream.url?.startsWith('http') || stream.infoHash || stream.url?.startsWith('magnet:'))
+              const playable = canPlayStream(stream, torboxApiKey)
               const downloadable = canDownload(stream)
               const title = compactStreamTitle(stream)
               const meta = streamMetaSummary(stream)
@@ -147,7 +152,7 @@ export function StreamResults({
                       disabled={!downloadable || downloadingKey === key}
                       onClick={() => onDownload(stream, index)}
                       className="grid size-6 place-items-center rounded-full text-[var(--mac-tertiary)] transition hover:bg-[var(--mac-control)] hover:text-[var(--mac-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
-                      title={downloadable ? 'Download to Jellyfin library' : 'No downloadable torrent data'}
+                      title={downloadable ? downloadActionTitle(torboxApiKey, stream) : 'No downloadable data'}
                     >
                       {downloadingKey === key ? <Loader2 className="animate-spin" size={13} /> : <Download size={13} />}
                     </button>
@@ -156,7 +161,7 @@ export function StreamResults({
                       disabled={!playable || resolvingKey === key}
                       onClick={() => onPlay(stream, index)}
                       className="grid size-6 place-items-center rounded-full bg-[var(--mac-accent)] text-[var(--mac-accent-text)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:bg-[var(--mac-control)] disabled:text-[var(--mac-tertiary)]"
-                      title={playable ? 'Play with Torbox' : 'No playable stream data'}
+                      title={playActionTitle(stream, torboxApiKey)}
                     >
                       {resolvingKey === key ? (
                         <Loader2 className="animate-spin" size={13} />

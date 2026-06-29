@@ -22,7 +22,9 @@ import {
   makeMovieFolderName,
   mergeServerDownloadJobs,
   sortDownloadJobs,
+  shouldShowDownloadsUi,
 } from '../downloads'
+import { defaultPlugins } from '../plugins'
 
 function makeJob(overrides: Partial<DownloadJob> = {}): DownloadJob {
   return {
@@ -290,5 +292,24 @@ describe('downloadSidebarSummary', () => {
     ])
     expect(summary.phase).toBe('stalled')
     expect(summary.stalledCount).toBe(1)
+  })
+})
+
+describe('shouldShowDownloadsUi', () => {
+  const pluginsOff = defaultPlugins.map((plugin) => ({ ...plugin, enabled: false }))
+  const pluginsOn = defaultPlugins.map((plugin) =>
+    plugin.id === 'torrentio' ? { ...plugin, enabled: true } : plugin,
+  )
+
+  it('is hidden with no addons and no jobs', () => {
+    expect(shouldShowDownloadsUi(pluginsOff, [])).toBe(false)
+  })
+
+  it('shows when a stream source is enabled', () => {
+    expect(shouldShowDownloadsUi(pluginsOn, [])).toBe(true)
+  })
+
+  it('shows when tracked jobs exist even if addons are off', () => {
+    expect(shouldShowDownloadsUi(pluginsOff, [makeJob()])).toBe(true)
   })
 })

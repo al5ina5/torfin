@@ -36,20 +36,51 @@ export type CustomStreamProfile = {
   onePerResolution: boolean
 }
 
+export type TitlePopularities = {
+  moviedb?: number
+  stremio?: number
+  trakt?: number
+  stremio_lib?: number
+}
+
+export type ExternalLinkTone = 'default' | 'imdb' | 'tmdb' | 'tvdb' | 'trakt' | 'letterboxd' | 'wiki'
+
+export type ExternalLink = {
+  id: string
+  label: string
+  shortLabel: string
+  url: string
+  tone?: ExternalLinkTone
+}
+
 export type Movie = {
   id: string
   type: ContentType
   name: string
   poster?: string
   background?: string
+  logo?: string
   releaseInfo?: string
+  released?: string
+  dvdRelease?: string
   description?: string
   genres?: string[]
   imdbRating?: string
+  imdbUrl?: string
+  movieDbId?: number
+  tvdbId?: number
+  slug?: string
+  shareUrl?: string
+  popularities?: TitlePopularities
   cast?: string[]
   director?: string[]
+  writer?: string[]
+  country?: string
+  awards?: string
+  status?: string
   runtime?: string
   trailer?: string
+  externalLinks?: ExternalLink[]
 }
 
 export type CinemetaMovie = {
@@ -219,6 +250,7 @@ export type DownloadStatus = {
 }
 
 export type DownloadJob = {
+  kind?: 'media_import' | 'torrent_export'
   pendingId?: string
   createdAt?: string
   movie: Movie

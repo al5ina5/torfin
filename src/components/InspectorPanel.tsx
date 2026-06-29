@@ -1,12 +1,21 @@
-import { Download, ExternalLink, Heart, Loader2 } from 'lucide-react'
+import { ExternalLink, Heart, Loader2 } from 'lucide-react'
 
-import { appRouteToUrl, searchRoute, titleRoute } from '../lib/app-routes'
+import { appRouteToUrl, titleRoute } from '../lib/app-routes'
+import { youtubeVideoIdFromUrl } from '../lib/cinemeta'
 import type { ContentType, JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
 import { AppDrawer } from './AppDrawer'
 import { AppLink } from './AppLink'
+import { EpisodePicker } from './inspector/EpisodePicker'
+import { ExternalLinksGrid } from './inspector/ExternalLinksGrid'
+import { GenreChips } from './inspector/GenreChips'
+import { InspectorSection } from './inspector/InspectorSection'
+import { MetadataFacts } from './inspector/MetadataFacts'
+import { PersonCredits } from './inspector/PersonCredits'
+import { PopularityStats } from './inspector/PopularityStats'
 import { StreamResults } from './StreamResults'
 import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
 import { NativePlaybackBanner } from './NativePlaybackBanner'
+import { TrailerEmbed } from './TrailerEmbed'
 import { VideoPlayer } from './VideoPlayer'
 
 type InspectorPanelProps = {
@@ -17,6 +26,7 @@ type InspectorPanelProps = {
   similarMovies: Movie[]
   onSelectSimilar: (movie: Movie) => void
   onSearchPerson?: (name: string) => void
+  onBrowseGenre?: (genre: string) => void
   jellyfinMatch: JellyfinLibraryMatch | null
   jellyfinLoading: boolean
   jellyfinUrl: string
@@ -59,6 +69,7 @@ type InspectorPanelProps = {
   onCancelNextEpisode?: () => void
   resolvingKey: string
   downloadingKey: string
+  torboxApiKey: string
   onChooseAudio: (value: string) => void
   onChooseSubtitle: (value: string) => void
   onRefreshStreams: () => void
@@ -80,6 +91,7 @@ function InspectorContent({
   similarMovies,
   onSelectSimilar,
   onSearchPerson,
+  onBrowseGenre,
   jellyfinMatch,
   jellyfinLoading,
   jellyfinUrl: _jellyfinUrl,
@@ -122,6 +134,7 @@ function InspectorContent({
   onCancelNextEpisode,
   resolvingKey,
   downloadingKey,
+  torboxApiKey,
   onChooseAudio,
   onChooseSubtitle,
   onRefreshStreams,
@@ -133,228 +146,200 @@ function InspectorContent({
   if (!movie) return null
 
   const isSeries = movie.type === 'series'
-  const seasonOptions = [...new Set(episodeOptions.map((entry) => entry.season))].sort((a, b) => a - b)
-  const episodesForSeason = episodeOptions.filter((entry) => entry.season === selectedSeason)
   const upgradeWarning = jellyfinMatch && topStreamQuality && jellyfinMatch.height
     ? topStreamQuality > jellyfinMatch.height
     : false
+  const trailerVideoId = movie.trailer ? youtubeVideoIdFromUrl(movie.trailer) : undefined
 
   return (
     <section>
-      <div className="relative h-44 overflow-hidden border-b border-[var(--mac-divider,var(--mac-border))] bg-[var(--mac-control)] sm:h-52">
+      <div className="relative overflow-hidden border-b border-[var(--mac-divider,var(--mac-border))] bg-[var(--mac-control)]">
         {movie.background || movie.poster ? (
           <img
             src={movie.background || movie.poster}
             alt=""
-            className="absolute inset-0 h-full w-full scale-105 object-cover opacity-55 blur-sm"
+            className="absolute inset-0 h-full w-full scale-105 object-cover opacity-50 blur-sm"
           />
         ) : null}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--mac-sidebar)] via-[var(--mac-sidebar)]/75 to-transparent" />
-        <div className="relative flex h-full items-end gap-3 app-screen-body">
-          {movie.poster ? (
-            <img
-              src={movie.poster}
-              alt=""
-              className="h-28 w-[76px] rounded-lg border border-[var(--mac-border)] object-cover shadow-lg sm:h-32 sm:w-[86px]"
-            />
-          ) : null}
-          <div className="min-w-0 flex-1 pb-1">
-            <div className="flex items-start gap-2">
-              <h2 className="line-clamp-2 flex-1 text-[18px] font-semibold leading-6 tracking-normal sm:text-[20px]">{movie.name}</h2>
-              <button
-                type="button"
-                onClick={onToggleWatchlist}
-                className="grid size-9 shrink-0 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] sm:size-8"
-                aria-label={inWatchlist ? `Remove ${movie.name} from watchlist` : `Add ${movie.name} to watchlist`}
-              >
-                <Heart size={15} fill={inWatchlist ? 'currentColor' : 'none'} />
-              </button>
-            </div>
-            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-[var(--mac-secondary)]">
-              <span>{movie.releaseInfo}</span>
-              {movie.runtime ? <span>{movie.runtime}</span> : null}
-              {movie.imdbRating ? <span>{movie.imdbRating} IMDb</span> : null}
-            </div>
-            {jellyfinLoading ? (
-              <div className="mt-2 inline-flex items-center gap-1 rounded-md border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2 py-1 text-[10px] text-[var(--mac-secondary)]">
-                <Loader2 className="animate-spin" size={11} />
-                Checking Jellyfin
-              </div>
-            ) : jellyfinMatch ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {jellyfinItemUrl && onOpenInJellyfin ? (
-                  <button
-                    type="button"
-                    onClick={onOpenInJellyfin}
-                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-500"
-                  >
-                    Play in Jellyfin
-                    <ExternalLink size={11} />
-                  </button>
-                ) : null}
-                <span className="inline-flex rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-200">
-                  In Jellyfin · {jellyfinMatch.qualityLabel || 'Available'}
-                </span>
-                {upgradeWarning ? (
-                  <span className="inline-flex rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
-                    Higher quality available
-                  </span>
-                ) : null}
-                {jellyfinItemUrl && !onOpenInJellyfin ? (
-                  <a
-                    href={jellyfinItemUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--mac-accent)]"
-                  >
-                    Open in Jellyfin
-                    <ExternalLink size={11} />
-                  </a>
-                ) : null}
-              </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--mac-sidebar)] via-[var(--mac-sidebar)]/80 to-[var(--mac-sidebar)]/20" />
+        <div className="relative app-screen-body py-4">
+          <div className="flex gap-3">
+            {movie.poster ? (
+              <img
+                src={movie.poster}
+                alt=""
+                className="h-32 w-[88px] shrink-0 rounded-xl border border-[var(--mac-border)] object-cover shadow-xl sm:h-36 sm:w-[98px]"
+              />
             ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  {movie.logo ? (
+                    <img
+                      src={movie.logo}
+                      alt={movie.name}
+                      className="mb-1 max-h-11 max-w-[min(100%,240px)] object-contain object-left sm:max-h-12"
+                    />
+                  ) : (
+                    <h2 className="line-clamp-2 text-[18px] font-semibold leading-6 tracking-normal sm:text-[20px]">{movie.name}</h2>
+                  )}
+                  {movie.logo ? (
+                    <p className="line-clamp-1 text-[12px] text-[var(--mac-tertiary)]">{movie.name}</p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={onToggleWatchlist}
+                  className="grid size-9 shrink-0 place-items-center rounded-full border border-[var(--mac-border)] bg-[var(--mac-control)]/90 backdrop-blur sm:size-8"
+                  aria-label={inWatchlist ? `Remove ${movie.name} from watchlist` : `Add ${movie.name} to watchlist`}
+                >
+                  <Heart size={15} fill={inWatchlist ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--mac-secondary)]">
+                {movie.imdbRating ? (
+                  movie.imdbUrl ? (
+                    <a
+                      href={movie.imdbUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full border border-yellow-500/35 bg-yellow-500/10 px-2 py-0.5 font-semibold text-yellow-900 hover:bg-yellow-500/15 dark:text-yellow-100"
+                    >
+                      ★ {movie.imdbRating}
+                      <ExternalLink size={10} />
+                    </a>
+                  ) : (
+                    <span className="rounded-full border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2 py-0.5 font-semibold">
+                      ★ {movie.imdbRating}
+                    </span>
+                  )
+                ) : null}
+                {movie.genres?.length ? <GenreChips genres={movie.genres.slice(0, 4)} onBrowseGenre={onBrowseGenre} /> : null}
+              </div>
+
+              {jellyfinLoading ? (
+                <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2.5 py-1 text-[10px] text-[var(--mac-secondary)]">
+                  <Loader2 className="animate-spin" size={11} />
+                  Checking Jellyfin
+                </div>
+              ) : jellyfinMatch ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {jellyfinItemUrl && onOpenInJellyfin ? (
+                    <button
+                      type="button"
+                      onClick={onOpenInJellyfin}
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-500"
+                    >
+                      Play in Jellyfin
+                      <ExternalLink size={11} />
+                    </button>
+                  ) : null}
+                  <span className="inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-200">
+                    In Jellyfin · {jellyfinMatch.qualityLabel || 'Available'}
+                  </span>
+                  {upgradeWarning ? (
+                    <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold text-amber-700 dark:text-amber-200">
+                      Higher quality available
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="app-screen-body space-y-4">
-        {movie.description ? (
-          <p className="line-clamp-6 text-[13px] leading-5 text-[var(--mac-secondary)] sm:line-clamp-4">{movie.description}</p>
-        ) : null}
-
-        {movie.director?.length ? (
-          <div className="text-[12px] leading-5 text-[var(--mac-secondary)]">
-            <span className="font-semibold text-[var(--mac-text)]">Director: </span>
-            {movie.director.map((name, index) => (
-              <span key={name}>
-                {index > 0 ? ', ' : ''}
-                {onSearchPerson ? (
-                  <AppLink
-                    href={appRouteToUrl(searchRoute(contentType, name))}
-                    onNavigate={() => onSearchPerson(name)}
-                    className="font-medium text-[var(--mac-accent)] hover:underline"
-                  >
-                    {name}
-                  </AppLink>
-                ) : (
-                  name
-                )}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        {movie.cast?.length ? (
-          <div className="text-[12px] leading-5 text-[var(--mac-secondary)]">
-            <span className="font-semibold text-[var(--mac-text)]">Cast: </span>
-            {movie.cast.slice(0, 6).map((name, index) => (
-              <span key={name}>
-                {index > 0 ? ', ' : ''}
-                {onSearchPerson ? (
-                  <AppLink
-                    href={appRouteToUrl(searchRoute(contentType, name))}
-                    onNavigate={() => onSearchPerson(name)}
-                    className="font-medium text-[var(--mac-accent)] hover:underline"
-                  >
-                    {name}
-                  </AppLink>
-                ) : (
-                  name
-                )}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        {movie.trailer ? (
+      <div className="app-screen-body space-y-5 py-4">
+        {trailerVideoId ? (
+          <InspectorSection title="Trailer">
+            <TrailerEmbed trailerUrl={movie.trailer!} title={movie.name} />
+          </InspectorSection>
+        ) : movie.trailer ? (
           <a
             href={movie.trailer}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-9 items-center gap-1 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)] sm:h-8"
+            className="inline-flex h-9 items-center gap-1 rounded-full border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)] sm:h-8"
           >
-            Watch Trailer
+            Find trailer on YouTube
             <ExternalLink size={13} />
           </a>
         ) : null}
 
+        {movie.popularities ? (
+          <InspectorSection title="Popularity">
+            <PopularityStats popularities={movie.popularities} />
+          </InspectorSection>
+        ) : null}
+
+        <InspectorSection title="Details">
+          <div className="space-y-3">
+            <MetadataFacts movie={movie} />
+            {movie.description ? (
+              <p className="text-[13px] leading-6 text-[var(--mac-secondary)]">{movie.description}</p>
+            ) : null}
+            {movie.awards ? (
+              <p className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2.5 text-[12px] leading-5 text-[var(--mac-secondary)]">
+                <span className="font-semibold text-[var(--mac-text)]">Awards · </span>
+                {movie.awards}
+              </p>
+            ) : null}
+          </div>
+        </InspectorSection>
+
+        {movie.externalLinks?.length ? (
+          <InspectorSection title="Find on">
+            <ExternalLinksGrid links={movie.externalLinks} />
+          </InspectorSection>
+        ) : null}
+
+        {movie.director?.length || movie.writer?.length || movie.cast?.length ? (
+          <InspectorSection title="Credits">
+            <div className="space-y-4">
+              <PersonCredits label="Director" names={movie.director ?? []} contentType={contentType} onSearchPerson={onSearchPerson} />
+              <PersonCredits label="Writer" names={movie.writer ?? []} contentType={contentType} onSearchPerson={onSearchPerson} />
+              <PersonCredits label="Cast" names={movie.cast ?? []} contentType={contentType} onSearchPerson={onSearchPerson} />
+            </div>
+          </InspectorSection>
+        ) : null}
+
         {similarMovies.length ? (
-          <div>
-            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">Similar</h3>
+          <InspectorSection title="Similar">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {similarMovies.map((entry) => (
                 <AppLink
                   key={entry.id}
                   href={appRouteToUrl(titleRoute(entry))}
                   onNavigate={() => onSelectSimilar(entry)}
-                  className="w-16 shrink-0 text-left"
+                  className="w-20 shrink-0 text-left"
                 >
-                  <div className="aspect-[2/3] overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]">
+                  <div className="aspect-[2/3] overflow-hidden rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] shadow-sm">
                     {entry.poster ? <img src={entry.poster} alt="" className="h-full w-full object-cover" /> : null}
                   </div>
-                  <div className="mt-1 line-clamp-2 text-[10px] leading-3">{entry.name}</div>
+                  <div className="mt-1.5 line-clamp-2 text-[10px] leading-3 text-[var(--mac-secondary)]">{entry.name}</div>
                 </AppLink>
               ))}
             </div>
-          </div>
+          </InspectorSection>
         ) : null}
 
         {isSeries ? (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">Season</span>
-                <select
-                  value={selectedSeason ?? ''}
-                  onChange={(event) => onSeasonChange(Number(event.target.value))}
-                  disabled={loadingEpisodes || !seasonOptions.length}
-                  className="h-9 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[13px] outline-none focus:border-[var(--mac-accent)] disabled:opacity-50 sm:h-8"
-                >
-                  {loadingEpisodes ? <option value="">Loading…</option> : null}
-                  {!loadingEpisodes && !seasonOptions.length ? (
-                    <option value="">{episodeLoadError || 'No seasons found'}</option>
-                  ) : null}
-                  {seasonOptions.map((season) => (
-                    <option key={season} value={season}>
-                      Season {season}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">Episode</span>
-                <select
-                  value={selectedEpisode ?? ''}
-                  onChange={(event) => onEpisodeChange(Number(event.target.value))}
-                  disabled={loadingEpisodes || !episodesForSeason.length}
-                  className="h-9 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[13px] outline-none focus:border-[var(--mac-accent)] disabled:opacity-50 sm:h-8"
-                >
-                  {loadingEpisodes ? <option value="">Loading…</option> : null}
-                  {!loadingEpisodes && !episodesForSeason.length ? <option value="">—</option> : null}
-                  {episodesForSeason.map((entry) => (
-                    <option key={`${entry.season}-${entry.episode}`} value={entry.episode}>
-                      {entry.episode}. {entry.title || `Episode ${entry.episode}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {onDownloadSeason ? (
-              <button
-                type="button"
-                disabled={batchDownloading || !episodesForSeason.length}
-                onClick={onDownloadSeason}
-                className="inline-flex h-9 items-center gap-1 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)] disabled:opacity-50 sm:h-8"
-              >
-                {batchDownloading ? <Loader2 className="animate-spin" size={13} /> : <Download size={13} />}
-                Download Season {selectedSeason}
-              </button>
-            ) : null}
-          </div>
+          <EpisodePicker
+            episodeOptions={episodeOptions}
+            loadingEpisodes={loadingEpisodes}
+            episodeLoadError={episodeLoadError}
+            selectedSeason={selectedSeason}
+            selectedEpisode={selectedEpisode}
+            onSeasonChange={onSeasonChange}
+            onEpisodeChange={onEpisodeChange}
+            onDownloadSeason={onDownloadSeason}
+            batchDownloading={batchDownloading}
+          />
         ) : null}
 
         {playbackUrl || playbackStatus || nativePlayback || nextEpisodePrompt ? (
-          <section className="overflow-hidden rounded-lg border border-black/20 bg-black shadow-lg">
+          <section className="overflow-hidden rounded-xl border border-black/20 bg-black shadow-lg">
             {nativePlayback ? (
               <NativePlaybackBanner
                 player={nativePlayback.player}
@@ -405,22 +390,23 @@ function InspectorContent({
         ) : null}
 
         {showStreamResults ? (
-        <StreamResults
-          streams={streams}
-          compactStreams={compactStreams}
-          profileOptions={profileOptions}
-          loading={loadingStreams}
-          profile={resultProfile}
-          onProfileChange={onResultProfileChange}
-          resultsExpanded={resultsExpanded}
-          onToggleExpanded={onToggleResultsExpanded}
-          emptyMessage={streamEmptyMessage}
+          <StreamResults
+            streams={streams}
+            compactStreams={compactStreams}
+            profileOptions={profileOptions}
+            loading={loadingStreams}
+            profile={resultProfile}
+            onProfileChange={onResultProfileChange}
+            resultsExpanded={resultsExpanded}
+            onToggleExpanded={onToggleResultsExpanded}
+            emptyMessage={streamEmptyMessage}
           onRefresh={onRefreshStreams}
           resolvingKey={resolvingKey}
           downloadingKey={downloadingKey}
+          torboxApiKey={torboxApiKey}
           onPlay={onPlay}
-          onDownload={onDownload}
-        />
+            onDownload={onDownload}
+          />
         ) : null}
       </div>
     </section>
@@ -432,7 +418,6 @@ export function InspectorPanel(props: InspectorPanelProps) {
 
   return (
     <>
-      {/* Desktop sidebar */}
       <aside className="app-sidebar-desktop mac-sidebar hidden min-h-0 flex-col lg:flex" data-focus-zone="inspector">
         {!movie ? (
           <div className="grid h-full min-h-96 place-items-center p-6 text-center text-[13px] text-[var(--mac-secondary)]">

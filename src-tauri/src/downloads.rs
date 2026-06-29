@@ -1217,3 +1217,18 @@ fn json_to_i64(value: &serde_json::Value) -> Option<i64> {
         .or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
         .or_else(|| value.as_str().and_then(|text| text.parse::<i64>().ok()))
 }
+
+#[tauri::command]
+pub(crate) fn save_torrent_export(filename: String, content: String) -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|_| "Could not resolve home directory.".to_string())?;
+    let dir = std::path::PathBuf::from(home).join("Downloads/Torfin/torrents");
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let safe_name: String = filename
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_'))
+        .collect();
+    let file_name = if safe_name.is_empty() { "export.magnet".to_string() } else { safe_name };
+    let path = dir.join(file_name);
+    std::fs::write(&path, content).map_err(|error| error.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}

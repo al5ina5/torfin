@@ -12,6 +12,12 @@ export const defaultPlugins: PluginConfig[] = [
     enabled: false,
     streamUrlTemplate: 'https://torrentio.strem.fun/stream/movie/{imdbId}.json',
   },
+  {
+    id: 'comet',
+    name: 'Comet',
+    enabled: false,
+    streamUrlTemplate: cometTorboxStreamUrlTemplate,
+  },
 ]
 
 export function normalizePluginConfig(plugin: PluginConfig): PluginConfig {

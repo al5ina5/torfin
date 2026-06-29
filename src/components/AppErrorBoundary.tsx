@@ -30,13 +30,28 @@ export class AppErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.error) {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-[var(--bg)] p-6 text-[var(--text)]">
-          <div className="max-w-lg space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
-            <h1 className="text-lg font-semibold">Something went wrong</h1>
-            <p className="text-sm text-[var(--muted)]">{this.state.error.message}</p>
+        <div className="movie-empty-enter flex min-h-screen flex-col items-center justify-center bg-[var(--mac-window)] px-6 py-12 text-[var(--mac-text)]">
+          <div className="flex max-w-xs flex-col items-center text-center">
+            <img
+              src="/sad-mac.jpg"
+              alt=""
+              width={120}
+              height={160}
+              className="mb-5 select-none"
+              draggable={false}
+            />
+            <h1 className="text-[15px] font-semibold tracking-tight">This app is broken.</h1>
+            <p className="mt-2 text-[13px] leading-5 text-[var(--mac-secondary)]">
+              The hamsters stopped running. A restart might help — no promises though.
+            </p>
+            {this.state.error.message ? (
+              <p className="mt-4 max-w-full truncate font-mono text-[11px] text-[var(--mac-tertiary)]" title={this.state.error.message}>
+                {this.state.error.message}
+              </p>
+            ) : null}
             <button
               type="button"
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white"
+              className="mt-6 h-8 rounded-md bg-[var(--mac-accent)] px-4 text-[12px] font-semibold text-white transition hover:opacity-90"
               onClick={() => window.location.reload()}
             >
               Reload app

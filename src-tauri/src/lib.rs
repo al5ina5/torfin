@@ -32,6 +32,7 @@ pub fn run() {
             downloads::cancel_local_url_download,
             downloads::pause_local_url_download,
             downloads::resume_local_url_download,
+            downloads::save_torrent_export,
             jellyfin::lookup_jellyfin_library,
             jellyfin::lookup_jellyfin_season_episodes,
             jellyfin::fetch_jellyfin_favorites,
