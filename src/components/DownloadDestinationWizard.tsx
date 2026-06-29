@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import {
   defaultLocalDestinationName,
   defaultRemoteDestinationName,
-  destinationNeedsJellyfinKey,
   loadDestinationSecrets,
   newDestination,
   saveDestinationSecrets,
   testDestination,
 } from '../lib/download-destinations'
+import type { DestinationSecrets } from '../lib/download-destinations'
 import { isTauriRuntime } from '../lib/api'
 import type { DownloadDestination, DownloadDestinationKind } from '../types'
 import { AppModal } from './AppModal'
@@ -18,23 +18,20 @@ type DownloadDestinationWizardProps = {
   open: boolean
   initial?: DownloadDestination | null
   onClose: () => void
-  onSave: (destination: DownloadDestination, secrets: { jellyfinApiKey: string; sshPassword: string }, makeDefault: boolean) => Promise<void>
-  onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
+  onSave: (destination: DownloadDestination, secrets: DestinationSecrets, makeDefault: boolean) => Promise<void>
 }
 
-type WizardStep = 'choose' | 'configure' | 'confirm'
+type WizardStep = 'choose' | 'configure'
 
 export function DownloadDestinationWizard({
   open,
   initial,
   onClose,
   onSave,
-  onOpenJellyfinSignIn,
 }: DownloadDestinationWizardProps) {
   const isDesktop = isTauriRuntime()
   const [step, setStep] = useState<WizardStep>(initial ? 'configure' : 'choose')
-  const [destination, setDestination] = useState<DownloadDestination>(() => initial ?? newDestination('remote-jellyfin', isDesktop))
-  const [jellyfinApiKey, setJellyfinApiKey] = useState('')
+  const [destination, setDestination] = useState<DownloadDestination>(() => initial ?? newDestination(isDesktop ? 'remote' : 'local', isDesktop))
   const [sshPassword, setSshPassword] = useState('')
   const [makeDefault, setMakeDefault] = useState(Boolean(initial?.isDefault))
   const [testing, setTesting] = useState(false)
@@ -46,8 +43,7 @@ export function DownloadDestinationWizard({
   useEffect(() => {
     if (!open) return
     setStep(initial ? 'configure' : 'choose')
-    setDestination(initial ?? newDestination(isDesktop ? 'remote-jellyfin' : 'local', isDesktop))
-    setJellyfinApiKey('')
+    setDestination(initial ?? newDestination(isDesktop ? 'remote' : 'local', isDesktop))
     setSshPassword('')
     setMakeDefault(Boolean(initial?.isDefault ?? true))
     setTesting(false)
@@ -57,7 +53,6 @@ export function DownloadDestinationWizard({
     setError('')
     if (initial) {
       void loadDestinationSecrets(initial).then((secrets) => {
-        setJellyfinApiKey(secrets.jellyfinApiKey)
         setSshPassword(secrets.sshPassword)
       })
     }
@@ -80,7 +75,7 @@ export function DownloadDestinationWizard({
     setTestMessage('')
     setError('')
     try {
-      const result = await testDestination(destination, { jellyfinApiKey, sshPassword }, isDesktop)
+      const result = await testDestination(destination, { sshPassword }, isDesktop)
       setTestOk(result.ok)
       setTestMessage(result.message)
       if (!result.ok) setError(result.message)
@@ -98,7 +93,7 @@ export function DownloadDestinationWizard({
     setSaving(true)
     setError('')
     try {
-      const result = await testDestination(destination, { jellyfinApiKey, sshPassword }, isDesktop)
+      const result = await testDestination(destination, { sshPassword }, isDesktop)
       setTestOk(result.ok)
       setTestMessage(result.message)
       if (!result.ok) {
@@ -112,8 +107,8 @@ export function DownloadDestinationWizard({
         lastTestOk: true,
         lastTestMessage: result.message,
       }
-      await onSave(next, { jellyfinApiKey, sshPassword }, makeDefault)
-      await saveDestinationSecrets(next.id, { jellyfinApiKey, sshPassword })
+      await onSave(next, { sshPassword }, makeDefault)
+      await saveDestinationSecrets(next.id, { sshPassword })
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save destination.')
@@ -135,7 +130,7 @@ export function DownloadDestinationWizard({
       {step === 'choose' ? (
         <div className="space-y-4">
           <p className="text-[12px] leading-5 text-[var(--mac-secondary)]">
-            Choose where completed downloads should be saved. Remote Jellyfin is best when Torfin runs on your Mac or PC and files should land on your home server.
+            Choose where completed downloads should be saved.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <button
@@ -149,31 +144,58 @@ export function DownloadDestinationWizard({
               </div>
               <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
                 {isDesktop
-                  ? 'Save to a folder on this Mac. Optional Jellyfin refresh if that folder is in your library.'
-                  : 'Save into the folder Torfin is configured to use on this machine (Docker or local server).'}
+                  ? 'Save to a folder on this Mac or PC.'
+                  : 'Save into the folder Torfin is configured to use on this machine.'}
               </p>
             </button>
-            <button
-              type="button"
-              onClick={() => chooseKind('remote-jellyfin')}
-              disabled={!isDesktop}
-              className="rounded-xl border border-[var(--mac-border)] bg-[var(--mac-surface)] p-4 text-left transition hover:border-[var(--mac-accent)] hover:bg-[var(--mac-control)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
-                <Server size={16} />
-                Remote Jellyfin
+            {isDesktop ? (
+              <button
+                type="button"
+                onClick={() => chooseKind('remote')}
+                className="rounded-xl border border-[var(--mac-border)] bg-[var(--mac-surface)] p-4 text-left transition hover:border-[var(--mac-accent)] hover:bg-[var(--mac-control)]"
+              >
+                <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold">
+                  <Server size={16} />
+                  Remote server
+                </div>
+                <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
+                  SSH into a home server or NAS and download straight into a folder there.
+                </p>
+              </button>
+            ) : (
+              <div
+                aria-disabled="true"
+                className="rounded-xl border border-dashed border-[var(--mac-border)] bg-[var(--mac-control)]/50 p-4 opacity-80"
+              >
+                <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-[var(--mac-secondary)]">
+                  <Server size={16} />
+                  Remote server
+                  <span className="rounded-full bg-[var(--mac-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    Desktop app
+                  </span>
+                </div>
+                <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
+                  SSH downloads cannot run in the browser. Open the Torfin desktop app on your Mac or PC to add a remote server destination.
+                </p>
               </div>
-              <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
-                {isDesktop
-                  ? 'SSH into your Jellyfin host and download directly into the library folder. No Torfin install needed on the server.'
-                  : 'Use the desktop app to download over SSH to a remote Jellyfin server.'}
-              </p>
-            </button>
+            )}
           </div>
         </div>
       ) : null}
 
-      {step === 'configure' ? (
+      {step === 'configure' && destination.kind === 'remote' && !isDesktop ? (
+        <div className="space-y-3 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-4">
+          <div className="text-[13px] font-semibold">Remote destinations need the desktop app</div>
+          <p className="text-[12px] leading-5 text-[var(--mac-secondary)]">
+            SSH setup and downloads are only available in the Torfin desktop app. In the browser you can use a local folder, or switch to the desktop app to manage this remote destination.
+          </p>
+          <button type="button" onClick={onClose} className="h-8 rounded-md bg-[var(--mac-accent)] px-4 text-[12px] font-semibold text-[var(--mac-accent-text)]">
+            Close
+          </button>
+        </div>
+      ) : null}
+
+      {step === 'configure' && (destination.kind !== 'remote' || isDesktop) ? (
         <div className="space-y-3">
           <label className="grid grid-cols-[110px_1fr] items-center gap-3 text-[12px]">
             <span>Name</span>
@@ -184,55 +206,18 @@ export function DownloadDestinationWizard({
             />
           </label>
 
-          {destinationNeedsJellyfinKey(destination) ? (
+          {destination.kind === 'remote' ? (
             <div className="space-y-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-              <div className="text-[12px] font-semibold">Jellyfin</div>
+              <div className="text-[12px] font-semibold">SSH connection</div>
               <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
-                Used to refresh your library after a download finishes. The API key does not transfer files — SSH handles that below.
-              </p>
-              <label className="grid grid-cols-[110px_1fr] items-center gap-3 text-[12px]">
-                <span>Server URL</span>
-                <input
-                  value={destination.jellyfinUrl}
-                  onChange={(event) => setDestination((current) => ({ ...current, jellyfinUrl: event.target.value }))}
-                  placeholder="http://jellyfin.local:8096"
-                  className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                />
-              </label>
-              <label className="grid grid-cols-[110px_1fr] items-center gap-3 text-[12px]">
-                <span>API Key</span>
-                <input
-                  value={jellyfinApiKey}
-                  onChange={(event) => setJellyfinApiKey(event.target.value)}
-                  type="password"
-                  placeholder="From Dashboard → API Keys"
-                  className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
-                />
-              </label>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenJellyfinSignIn(destination.jellyfinUrl, setJellyfinApiKey)}
-                  className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold"
-                >
-                  Sign In
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {destination.kind === 'remote-jellyfin' ? (
-            <div className="space-y-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-              <div className="text-[12px] font-semibold">SSH to Jellyfin host</div>
-              <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
-                Torfin runs wget on your server over SSH. Use the same machine Jellyfin runs on, or any host that can write to the library folder.
+                Torfin runs wget on the remote host over SSH. Use any server that can write to your media folders.
               </p>
               <label className="grid grid-cols-[110px_1fr] items-center gap-3 text-[12px]">
                 <span>Host</span>
                 <input
                   value={destination.sshHost}
                   onChange={(event) => setDestination((current) => ({ ...current, sshHost: event.target.value }))}
-                  placeholder="jellyfin.local or 192.168.1.10"
+                  placeholder="nas.local or 192.168.1.10"
                   className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none focus:border-[var(--mac-accent)]"
                 />
               </label>
@@ -267,7 +252,7 @@ export function DownloadDestinationWizard({
           ) : null}
 
           <div className="space-y-2 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-            <div className="text-[12px] font-semibold">Library folders</div>
+            <div className="text-[12px] font-semibold">Save folders</div>
             <label className="grid grid-cols-[110px_1fr] items-center gap-3 text-[12px]">
               <span>Movies</span>
               <input
@@ -287,16 +272,6 @@ export function DownloadDestinationWizard({
               />
             </label>
           </div>
-
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Refresh Jellyfin when download completes</span>
-            <input
-              type="checkbox"
-              checked={destination.refreshOnComplete}
-              onChange={(event) => setDestination((current) => ({ ...current, refreshOnComplete: event.target.checked }))}
-              className="size-4 accent-[var(--mac-accent)]"
-            />
-          </label>
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             {!initial ? (

@@ -16,12 +16,14 @@ type PreferencesModalProps = {
   preferences: AppPreferences
   downloadConfig: DownloadConfig
   torboxApiKey: string
+  jellyfinApiKey: string
   onClose: () => void
   onTabChange: (tab: PreferencesTab) => void
   onUpdatePlugin: (pluginId: string, patch: Partial<PluginConfig>) => void
   onUpdatePreferences: (patch: Partial<AppPreferences>) => void
   onUpdateDownloadConfig: (config: DownloadConfig) => void
   onChangeTorboxApiKey: (value: string) => void
+  onChangeJellyfinApiKey: (value: string) => void
   onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
   onExportSettings: () => void
   onImportSettings: () => void
@@ -35,12 +37,14 @@ export function PreferencesModal({
   preferences,
   downloadConfig,
   torboxApiKey,
+  jellyfinApiKey,
   onClose,
   onTabChange,
   onUpdatePlugin,
   onUpdatePreferences,
   onUpdateDownloadConfig,
   onChangeTorboxApiKey,
+  onChangeJellyfinApiKey,
   onOpenJellyfinSignIn,
   onExportSettings,
   onImportSettings,
@@ -243,7 +247,10 @@ export function PreferencesModal({
       {tab === 'downloads' ? (
         <DownloadDestinationsSettings
           downloadConfig={downloadConfig}
+          jellyfinApiKey={jellyfinApiKey}
           onUpdateDownloadConfig={onUpdateDownloadConfig}
+          onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
+          onChangeJellyfinApiKey={onChangeJellyfinApiKey}
           onOpenJellyfinSignIn={onOpenJellyfinSignIn}
         />
       ) : null}

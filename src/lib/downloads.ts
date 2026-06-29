@@ -121,15 +121,16 @@ export function buildPollConfig(
   config: DownloadConfig,
   destination: DownloadDestination,
   secrets: DestinationSecrets,
+  jellyfinApiKey: string,
   movie?: Movie,
 ): DownloadPollConfig {
   const savePath = movie ? destinationRootForMovie(destination, movie) : destination.moviesPath
   const jellyfin =
-    destination.refreshOnComplete && destination.jellyfinUrl.trim() && secrets.jellyfinApiKey.trim()
-      ? { baseUrl: destination.jellyfinUrl, apiKey: secrets.jellyfinApiKey, refreshOnComplete: true }
+    config.refreshJellyfinOnComplete && config.jellyfinUrl.trim() && jellyfinApiKey.trim()
+      ? { baseUrl: config.jellyfinUrl, apiKey: jellyfinApiKey, refreshOnComplete: true }
       : undefined
 
-  if (destination.kind === 'remote-jellyfin') {
+  if (destination.kind === 'remote') {
     return {
       mode: 'ssh',
       ssh: {

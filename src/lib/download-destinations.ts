@@ -6,23 +6,20 @@ import type { DownloadConfig, DownloadDestination, DownloadDestinationKind, Movi
 export { syncLocalDestinationWithServer }
 
 export type DestinationSecrets = {
-  jellyfinApiKey: string
   sshPassword: string
 }
 
 export type DestinationTestResult = {
   ok: boolean
   message: string
-  jellyfinName?: string
-  jellyfinVersion?: string
-}
-
-export function destinationJellyfinSecretKey(id: string) {
-  return `dest_jellyfin_${id}`
 }
 
 export function destinationSshSecretKey(id: string) {
   return `dest_ssh_${id}`
+}
+
+export function destinationJellyfinSecretKey(id: string) {
+  return `dest_jellyfin_${id}`
 }
 
 export function createDestinationId() {
@@ -34,7 +31,7 @@ export function defaultLocalDestinationName(isDesktop: boolean) {
 }
 
 export function defaultRemoteDestinationName() {
-  return 'Home Jellyfin'
+  return 'Remote Server'
 }
 
 export function newDestination(kind: DownloadDestinationKind, isDesktop: boolean): DownloadDestination {
@@ -45,12 +42,55 @@ export function newDestination(kind: DownloadDestinationKind, isDesktop: boolean
     isDefault: false,
     moviesPath: kind === 'local' ? DEFAULT_LOCAL_DOWNLOAD_PATH : '',
     tvPath: '',
-    jellyfinUrl: '',
-    refreshOnComplete: kind === 'remote-jellyfin',
     sshHost: '',
     sshPort: 22,
     sshUsername: '',
   }
+}
+
+type LegacyDestinationKind = DownloadDestinationKind | 'remote-jellyfin'
+
+type LegacyDestination = Omit<DownloadDestination, 'kind'> & {
+  jellyfinUrl?: string
+  refreshOnComplete?: boolean
+  kind: LegacyDestinationKind
+}
+
+function normalizeDestinationKind(kind: LegacyDestinationKind): DownloadDestinationKind {
+  return kind === 'remote-jellyfin' ? 'remote' : kind
+}
+
+function normalizeDestination(entry: LegacyDestination): DownloadDestination {
+  return {
+    id: entry.id,
+    name: entry.name,
+    kind: normalizeDestinationKind(entry.kind),
+    isDefault: entry.isDefault,
+    moviesPath: entry.moviesPath,
+    tvPath: entry.tvPath,
+    sshHost: entry.sshHost,
+    sshPort: entry.sshPort || 22,
+    sshUsername: entry.sshUsername,
+    lastTestedAt: entry.lastTestedAt,
+    lastTestOk: entry.lastTestOk,
+    lastTestMessage: entry.lastTestMessage,
+  }
+}
+
+function mergeLegacyJellyfinFromDestinations(config: DownloadConfig): DownloadConfig {
+  let jellyfinUrl = config.jellyfinUrl
+  let refreshJellyfinOnComplete = config.refreshJellyfinOnComplete
+  const destinations = (config.destinations || []).map((entry) => {
+    const legacy = entry as LegacyDestination
+    if (!jellyfinUrl.trim() && legacy.jellyfinUrl?.trim()) {
+      jellyfinUrl = legacy.jellyfinUrl
+    }
+    if (legacy.refreshOnComplete) {
+      refreshJellyfinOnComplete = true
+    }
+    return normalizeDestination(legacy)
+  })
+  return { ...config, jellyfinUrl, refreshJellyfinOnComplete, destinations }
 }
 
 function repairLegacyLocalPaths(config: DownloadConfig, isDesktop: boolean): DownloadConfig {
@@ -69,7 +109,7 @@ function repairLegacyLocalPaths(config: DownloadConfig, isDesktop: boolean): Dow
 
 export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean): DownloadConfig {
   if (config.destinations?.length) {
-    return repairLegacyLocalPaths(normalizeDestinations(config), isDesktop)
+    return repairLegacyLocalPaths(mergeLegacyJellyfinFromDestinations(config), isDesktop)
   }
 
   const hasLegacyRemote = Boolean(config.sshHost.trim() && config.sshSavePath.trim())
@@ -80,12 +120,10 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
     destinations.push({
       id: createDestinationId(),
       name: defaultRemoteDestinationName(),
-      kind: 'remote-jellyfin',
+      kind: 'remote',
       isDefault: config.downloader === 'ssh' || hasLegacyRemote,
       moviesPath: config.sshSavePath || config.savePath || DOCKER_DOWNLOAD_PATH,
       tvPath: config.tvSavePath || '',
-      jellyfinUrl: config.jellyfinUrl || '',
-      refreshOnComplete: config.refreshJellyfinOnComplete,
       sshHost: config.sshHost || '',
       sshPort: 22,
       sshUsername: config.sshUsername || '',
@@ -100,8 +138,6 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
       isDefault: config.downloader === 'local' || !hasLegacyRemote,
       moviesPath: config.localSavePath || DEFAULT_LOCAL_DOWNLOAD_PATH,
       tvPath: config.tvSavePath || '',
-      jellyfinUrl: config.jellyfinUrl || '',
-      refreshOnComplete: config.refreshJellyfinOnComplete,
       sshHost: '',
       sshPort: 22,
       sshUsername: '',
@@ -110,7 +146,7 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
 
   if (!destinations.length) {
     destinations.push({
-      ...newDestination(isDesktop ? 'remote-jellyfin' : 'local', isDesktop),
+      ...newDestination(isDesktop ? 'remote' : 'local', isDesktop),
       isDefault: true,
       moviesPath: isDesktop ? '' : DOCKER_DOWNLOAD_PATH,
     })
@@ -124,6 +160,8 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
 
   const migrated = normalizeDestinations({
     ...config,
+    jellyfinUrl: config.jellyfinUrl,
+    refreshJellyfinOnComplete: config.refreshJellyfinOnComplete,
     destinations,
     activeDestinationId: active.id,
   })
@@ -132,10 +170,7 @@ export function migrateDownloadConfig(config: DownloadConfig, isDesktop: boolean
 }
 
 function normalizeDestinations(config: DownloadConfig): DownloadConfig {
-  const destinations = (config.destinations || []).map((entry) => ({
-    ...entry,
-    sshPort: entry.sshPort || 22,
-  }))
+  const destinations = (config.destinations || []).map((entry) => normalizeDestination(entry as LegacyDestination))
   const activeDestinationId =
     destinations.find((entry) => entry.id === config.activeDestinationId)?.id
     ?? destinations.find((entry) => entry.isDefault)?.id
@@ -153,16 +188,17 @@ export function getDefaultDestination(config: DownloadConfig) {
   return config.destinations.find((entry) => entry.isDefault) ?? config.destinations[0]
 }
 
-export function destinationIsReady(destination: DownloadDestination | undefined, isDesktop: boolean) {
+export function destinationIsConfigured(destination: DownloadDestination | undefined) {
   if (!destination) return false
   if (!destination.moviesPath.trim()) return false
   if (destination.kind === 'local') return true
-  if (!isDesktop) return false
   return Boolean(destination.sshHost.trim() && destination.sshUsername.trim())
 }
 
-export function destinationNeedsJellyfinKey(destination: DownloadDestination) {
-  return destination.kind === 'remote-jellyfin' || destination.refreshOnComplete
+export function destinationIsReady(destination: DownloadDestination | undefined, isDesktop: boolean) {
+  if (!destinationIsConfigured(destination)) return false
+  if (destination!.kind === 'local') return true
+  return isDesktop
 }
 
 export function destinationSummary(destination: DownloadDestination) {
@@ -170,40 +206,46 @@ export function destinationSummary(destination: DownloadDestination) {
     return `Local · ${destination.moviesPath}`
   }
   const host = destination.sshHost || 'remote server'
-  return `Remote · ${host} · ${destination.moviesPath}`
+  return `SSH · ${host} · ${destination.moviesPath}`
 }
 
 export function destinationKindLabel(destination: DownloadDestination, isDesktop: boolean) {
   if (destination.kind === 'local') return isDesktop ? 'This device' : 'This server'
-  return 'Remote Jellyfin'
+  return 'Remote (SSH)'
 }
 
 export async function loadDestinationSecrets(destination: DownloadDestination): Promise<DestinationSecrets> {
-  const [jellyfinApiKey, sshPassword] = await Promise.all([
-    getSecret(destinationJellyfinSecretKey(destination.id)),
-    getSecret(destinationSshSecretKey(destination.id)),
-  ])
-  return {
-    jellyfinApiKey: jellyfinApiKey || '',
-    sshPassword: sshPassword || '',
-  }
+  const sshPassword = await getSecret(destinationSshSecretKey(destination.id))
+  return { sshPassword: sshPassword || '' }
 }
 
 export async function saveDestinationSecrets(destinationId: string, secrets: Partial<DestinationSecrets>) {
-  if (secrets.jellyfinApiKey !== undefined) {
-    await setSecret(destinationJellyfinSecretKey(destinationId), secrets.jellyfinApiKey)
-  }
   if (secrets.sshPassword !== undefined) {
     await setSecret(destinationSshSecretKey(destinationId), secrets.sshPassword)
   }
 }
 
-export async function migrateLegacySecrets(config: DownloadConfig, legacy: { jellyfinApiKey: string; sshPassword: string }) {
+export async function migrateLegacySecrets(
+  config: DownloadConfig,
+  legacy: { jellyfinApiKey: string; sshPassword: string },
+  onGlobalJellyfinKey?: (key: string) => void,
+) {
+  const globalJellyfin = legacy.jellyfinApiKey || (await getSecret('jellyfin_api_key')) || ''
+  if (!globalJellyfin.trim()) {
+    for (const destination of config.destinations) {
+      const perDest = await getSecret(destinationJellyfinSecretKey(destination.id))
+      if (perDest?.trim()) {
+        onGlobalJellyfinKey?.(perDest)
+        await setSecret('jellyfin_api_key', perDest)
+        break
+      }
+    }
+  }
+
   const defaultDest = getDefaultDestination(config)
   if (!defaultDest) return
   const existing = await loadDestinationSecrets(defaultDest)
   await saveDestinationSecrets(defaultDest.id, {
-    jellyfinApiKey: existing.jellyfinApiKey || legacy.jellyfinApiKey,
     sshPassword: existing.sshPassword || legacy.sshPassword,
   })
 }
@@ -217,14 +259,13 @@ export function destinationToLegacyConfig(
   config: DownloadConfig,
   destination: DownloadDestination,
   secrets: DestinationSecrets,
+  jellyfinApiKey: string,
 ): DownloadConfig {
-  const isRemote = destination.kind === 'remote-jellyfin'
+  const isRemote = destination.kind === 'remote'
   return {
     ...config,
     activeDestinationId: destination.id,
-    jellyfinUrl: destination.jellyfinUrl,
-    jellyfinApiKey: secrets.jellyfinApiKey,
-    refreshJellyfinOnComplete: destination.refreshOnComplete,
+    jellyfinApiKey,
     downloader: isRemote ? 'ssh' : config.downloader === 'qbittorrent' ? 'qbittorrent' : 'local',
     localSavePath: destination.kind === 'local' ? destination.moviesPath : config.localSavePath,
     tvSavePath: destination.tvPath,
@@ -282,9 +323,9 @@ export async function testJellyfinConnection(baseUrl: string, apiKey: string) {
 }
 
 export async function testSshConnection(destination: DownloadDestination, sshPassword: string) {
-  if (!destination.sshHost.trim()) throw new Error('Enter the SSH host for your Jellyfin server.')
+  if (!destination.sshHost.trim()) throw new Error('Enter the SSH host.')
   if (!destination.sshUsername.trim()) throw new Error('Enter the SSH username.')
-  if (!destination.moviesPath.trim()) throw new Error('Enter the folder Jellyfin watches for movies.')
+  if (!destination.moviesPath.trim()) throw new Error('Enter the remote movies folder.')
   if (!isTauriRuntime()) throw new Error('SSH downloads are only available in the desktop app.')
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<{ writable: boolean; hasWget: boolean; message: string }>('test_ssh_connection', {
@@ -304,23 +345,16 @@ export async function testDestination(
   const checks: string[] = []
   let ok = true
 
-  if (destinationNeedsJellyfinKey(destination) && destination.jellyfinUrl.trim()) {
-    try {
-      const info = await testJellyfinConnection(destination.jellyfinUrl, secrets.jellyfinApiKey)
-      checks.push(`Jellyfin: ${info.name} ${info.version}`)
-    } catch (error) {
+  if (destination.kind === 'remote') {
+    if (!destination.sshHost.trim() || !destination.sshUsername.trim()) {
       ok = false
-      checks.push(error instanceof Error ? error.message : 'Jellyfin connection failed.')
-    }
-  } else if (destination.kind === 'remote-jellyfin') {
-    ok = false
-    checks.push('Add your Jellyfin URL and API key.')
-  }
-
-  if (destination.kind === 'remote-jellyfin') {
-    if (!isDesktop) {
+      checks.push('Enter SSH host and username.')
+    } else if (!destination.moviesPath.trim()) {
       ok = false
-      checks.push('Remote SSH downloads need the desktop app.')
+      checks.push('Enter the remote movies folder.')
+    } else if (!isDesktop) {
+      ok = false
+      checks.push('Remote SSH is only available in the Torfin desktop app — open the Mac/PC app to test this destination.')
     } else {
       try {
         const ssh = await testSshConnection(destination, secrets.sshPassword)
@@ -338,12 +372,7 @@ export async function testDestination(
     checks.push(`Folder: ${destination.moviesPath}`)
   }
 
-  return {
-    ok,
-    message: checks.join(' · '),
-    jellyfinName: undefined,
-    jellyfinVersion: undefined,
-  }
+  return { ok, message: checks.join(' · ') }
 }
 
 export function readyDestinations(config: DownloadConfig, isDesktop: boolean) {

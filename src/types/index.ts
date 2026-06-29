@@ -114,7 +114,7 @@ export type TorboxAccountSummary = {
   cachedTorrents?: number
 }
 
-export type DownloadDestinationKind = 'local' | 'remote-jellyfin'
+export type DownloadDestinationKind = 'local' | 'remote'
 
 export type DownloadDestination = {
   id: string
@@ -123,8 +123,6 @@ export type DownloadDestination = {
   isDefault: boolean
   moviesPath: string
   tvPath: string
-  jellyfinUrl: string
-  refreshOnComplete: boolean
   sshHost: string
   sshPort: number
   sshUsername: string

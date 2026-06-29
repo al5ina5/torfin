@@ -46,7 +46,7 @@ export function DownloadDestinationPicker({
         <div className="rounded-lg border border-dashed border-[var(--mac-border)] bg-[var(--mac-surface)] p-4 text-center">
           <p className="text-[12px] font-medium">Set up a download destination first</p>
           <p className="mt-1 text-[11px] text-[var(--mac-secondary)]">
-            Connect your Jellyfin server or choose a local folder, then come back to download.
+            Add a local folder or remote SSH path in Settings, then come back to download.
           </p>
           <button
             type="button"

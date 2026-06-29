@@ -211,7 +211,7 @@ export function Sidebar({
           {activeCount > 0 ? (
             <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-[var(--mac-border)]">
               <span
-                className="block h-full rounded-full bg-[var(--mac-accent)] transition-[width] duration-500"
+                className="block h-full rounded-full bg-[var(--mac-accent)] transition-[width] duration-150 ease-linear"
                 style={{ width: `${Math.max(progressPercent, 2)}%` }}
               />
             </span>

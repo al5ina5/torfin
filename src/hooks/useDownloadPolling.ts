@@ -9,6 +9,8 @@ type UseDownloadPollingArgs = {
   setDownloadJobs: Dispatch<SetStateAction<DownloadJob[]>>
 }
 
+const POLL_INTERVAL_MS = 500
+
 export function useDownloadPolling({ enabled, downloadJobs, setDownloadJobs }: UseDownloadPollingArgs) {
   const jobsRef = useRef<DownloadJob[]>([])
 
@@ -19,52 +21,57 @@ export function useDownloadPolling({ enabled, downloadJobs, setDownloadJobs }: U
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    let polling = false
 
-    const poll = async () => {
-      if (polling) return
-      polling = true
-      try {
-        const jobs = jobsRef.current
-        if (!jobs.length) return
-        const invokeApi = await import('@tauri-apps/api/core').then((api) => api.invoke)
-        const updates = await Promise.all(
-          jobs.map(async (job) => {
-            const id = job.status?.id || ''
-            const pollConfig = job.pollConfig
-            if (!id || !pollConfig) return { id, error: 'Missing download tracking config.' }
-            try {
-              const status =
-                pollConfig.mode === 'qbittorrent'
-                  ? await invokeApi<DownloadStatus>('get_qbittorrent_download', { config: pollConfig.qbittorrent, id })
-                  : pollConfig.mode === 'ssh'
-                    ? await invokeApi<DownloadStatus>('get_remote_url_download', { id, config: pollConfig.ssh })
-                    : await invokeApi<DownloadStatus>('get_local_url_download', { id })
-              return { id, status, error: '' }
-            } catch (error) {
-              return { id, error: error instanceof Error ? error.message : 'Could not poll download.' }
-            }
-          }),
-        )
-        if (cancelled) return
-        setDownloadJobs((current) =>
-          current.map((job) => {
-            const update = updates.find((item) => item.id === job.status?.id)
-            return update ? { ...job, status: update.status ?? job.status, error: update.error } : job
-          }),
-        )
-      } catch {
-        // Keep polling loop alive even if invoke import fails temporarily.
-      } finally {
-        polling = false
+    const pollOnce = async () => {
+      const jobs = jobsRef.current
+      if (!jobs.length) return
+      const invokeApi = await import('@tauri-apps/api/core').then((api) => api.invoke)
+      const updates = await Promise.all(
+        jobs.map(async (job) => {
+          const id = job.status?.id || ''
+          const pollConfig = job.pollConfig
+          if (!id || !pollConfig) return { id, error: 'Missing download tracking config.' }
+          try {
+            const status =
+              pollConfig.mode === 'qbittorrent'
+                ? await invokeApi<DownloadStatus>('get_qbittorrent_download', { config: pollConfig.qbittorrent, id })
+                : pollConfig.mode === 'ssh'
+                  ? await invokeApi<DownloadStatus>('get_remote_url_download', { id, config: pollConfig.ssh })
+                  : await invokeApi<DownloadStatus>('get_local_url_download', { id })
+            return { id, status, error: '' }
+          } catch (error) {
+            return { id, error: error instanceof Error ? error.message : 'Could not poll download.' }
+          }
+        }),
+      )
+      if (cancelled) return
+      setDownloadJobs((current) =>
+        current.map((job) => {
+          const update = updates.find((item) => item.id === job.status?.id)
+          return update ? { ...job, status: update.status ?? job.status, error: update.error } : job
+        }),
+      )
+    }
+
+    const loop = async () => {
+      while (!cancelled) {
+        const started = Date.now()
+        try {
+          await pollOnce()
+        } catch {
+          // Keep polling loop alive even if invoke import fails temporarily.
+        }
+        if (cancelled) break
+        const wait = Math.max(0, POLL_INTERVAL_MS - (Date.now() - started))
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, wait)
+        })
       }
     }
 
-    void poll()
-    const timer = window.setInterval(() => void poll(), 1000)
+    void loop()
     return () => {
       cancelled = true
-      window.clearInterval(timer)
     }
   }, [enabled, setDownloadJobs])
 }

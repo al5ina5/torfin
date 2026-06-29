@@ -18,6 +18,7 @@ import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { useDockBadge } from './hooks/useDockBadge'
 import { useDownloadNotifications } from './hooks/useDownloadNotifications'
 import { loadServerDownloads, useDownloadPolling } from './hooks/useDownloadPolling'
+import { liveMetricsForJob, useLiveDownloadMetrics } from './hooks/useLiveDownloadMetrics'
 import { useJellyfinRefresh } from './hooks/useJellyfinRefresh'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useMediaQuery } from './hooks/useMediaQuery'
@@ -42,6 +43,7 @@ import {
   defaultDownloadConfig,
   dedupeDownloadJobs,
   downloadSidebarSummary,
+  isActiveDownloadJob,
   localPayload,
   makeDownloadFilename,
   makeMovieFolderName,
@@ -166,7 +168,7 @@ export default function App() {
   const [customFilterPresets, setCustomFilterPresets] = useState(() => loadCustomFilterPresets())
   const [searchHistoryOpen, setSearchHistoryOpen] = useState(false)
   const [downloadConfig, setDownloadConfig] = useState<DownloadConfig>(loadDownloadConfig)
-  const [destinationSecretMap, setDestinationSecretMap] = useState<Record<string, { jellyfinApiKey: string; sshPassword: string }>>({})
+  const [destinationSecretMap, setDestinationSecretMap] = useState<Record<string, { sshPassword: string }>>({})
   const [destinationPickerOpen, setDestinationPickerOpen] = useState(false)
   const [pendingDownload, setPendingDownload] = useState<{ stream: StreamResult; index: number } | null>(null)
   const [torboxKeyPromptOpen, setTorboxKeyPromptOpen] = useState(false)
@@ -230,7 +232,14 @@ export default function App() {
   } as CSSProperties
 
   const profileOptions = useMemo(() => allProfileOptions(preferences), [preferences])
-  const downloadSummary = useMemo(() => downloadSidebarSummary(downloadJobs), [downloadJobs])
+  const liveDownloadMetrics = useLiveDownloadMetrics(downloadJobs)
+  const downloadSummary = useMemo(() => {
+    const summary = downloadSidebarSummary(downloadJobs)
+    const topProgress = downloadJobs
+      .filter((job) => isActiveDownloadJob(job) && !job.paused)
+      .reduce((max, job) => Math.max(max, liveMetricsForJob(job, liveDownloadMetrics)?.progress ?? job.status?.progress ?? 0), 0)
+    return { ...summary, topProgress }
+  }, [downloadJobs, liveDownloadMetrics])
   const activeCustomProfile = useMemo(() => findCustomProfile(preferences, resultProfile), [preferences, resultProfile])
   const inspectorMovie = enrichedMovie ?? selectedMovie
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
@@ -267,7 +276,10 @@ export default function App() {
     })
     return { streams: found.sort((a, b) => b.rank - a.rank), errors }
   })
-  const { data: serverStatuses } = useSWR(tauri ? null : '/api/downloads', loadServerDownloads, { refreshInterval: 1000 })
+  const { data: serverStatuses } = useSWR(tauri ? null : '/api/downloads', loadServerDownloads, {
+    refreshInterval: 500,
+    dedupingInterval: 0,
+  })
   const { data: serverHealth } = useSWR(tauri ? null : '/api/health', () => getApi<{ downloadDir: string }>('/api/health'), { revalidateOnFocus: false })
 
   useEffect(() => {
@@ -279,30 +291,22 @@ export default function App() {
   }, [serverHealth?.downloadDir, tauri])
 
   const activeDestination = useMemo(() => getDestination(downloadConfig), [downloadConfig])
-  const jellyfinDestination = useMemo(
-    () =>
-      downloadConfig.destinations.find((entry) => entry.kind === 'remote-jellyfin' && entry.jellyfinUrl.trim())
-      ?? downloadConfig.destinations.find((entry) => entry.jellyfinUrl.trim())
-      ?? activeDestination,
-    [activeDestination, downloadConfig.destinations],
-  )
   const activeSecrets = activeDestination ? destinationSecretMap[activeDestination.id] : undefined
-  const jellyfinSecrets = jellyfinDestination ? destinationSecretMap[jellyfinDestination.id] : undefined
 
   const effectiveDownloadConfig = useMemo(
     () => {
+      const jellyfinKey = jellyfinApiKey || downloadConfig.jellyfinApiKey
       if (!activeDestination) {
         return {
           ...downloadConfig,
           sshPassword: sshPassword || downloadConfig.sshPassword,
-          jellyfinApiKey: jellyfinApiKey || downloadConfig.jellyfinApiKey,
+          jellyfinApiKey: jellyfinKey,
         }
       }
       const secrets = {
-        jellyfinApiKey: activeSecrets?.jellyfinApiKey || jellyfinApiKey || downloadConfig.jellyfinApiKey,
         sshPassword: activeSecrets?.sshPassword || sshPassword || downloadConfig.sshPassword,
       }
-      return destinationToLegacyConfig(downloadConfig, activeDestination, secrets)
+      return destinationToLegacyConfig(downloadConfig, activeDestination, secrets, jellyfinKey)
     },
     [activeDestination, activeSecrets, downloadConfig, jellyfinApiKey, sshPassword],
   )
@@ -353,7 +357,7 @@ export default function App() {
 
   useEffect(() => {
     if (!secretsLoaded || !downloadConfig.destinations.length) return
-    void migrateLegacySecrets(downloadConfig, { jellyfinApiKey, sshPassword })
+    void migrateLegacySecrets(downloadConfig, { jellyfinApiKey, sshPassword }, setJellyfinApiKey)
   }, [downloadConfig.destinations.length, jellyfinApiKey, secretsLoaded, sshPassword])
 
   useEffect(() => {
@@ -441,9 +445,8 @@ export default function App() {
   }, [selectedMovie])
 
   useEffect(() => {
-    const jellyfinUrl = jellyfinDestination?.jellyfinUrl || effectiveDownloadConfig.jellyfinUrl
-    const jellyfinApiKeyValue =
-      jellyfinSecrets?.jellyfinApiKey || activeSecrets?.jellyfinApiKey || jellyfinApiKey || effectiveDownloadConfig.jellyfinApiKey
+    const jellyfinUrl = downloadConfig.jellyfinUrl
+    const jellyfinApiKeyValue = jellyfinApiKey || downloadConfig.jellyfinApiKey
     if (!selectedMovie || !jellyfinUrl.trim() || !jellyfinApiKeyValue.trim()) {
       setJellyfinMatch(null)
       return
@@ -468,14 +471,11 @@ export default function App() {
       cancelled = true
     }
   }, [
-    activeSecrets?.jellyfinApiKey,
-    effectiveDownloadConfig.jellyfinApiKey,
-    effectiveDownloadConfig.jellyfinUrl,
+    downloadConfig.jellyfinApiKey,
+    downloadConfig.jellyfinUrl,
     episodeSelection?.episode,
     episodeSelection?.season,
     jellyfinApiKey,
-    jellyfinDestination?.jellyfinUrl,
-    jellyfinSecrets?.jellyfinApiKey,
     selectedMovie,
   ])
 
@@ -606,7 +606,8 @@ export default function App() {
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
     const id = stream.infoHash?.toLowerCase() ?? `${movie.id}-${episode?.episode ?? 'movie'}-${index}-${Date.now()}`
     const secrets = await loadDestinationSecrets(destination)
-    const pollConfig = buildPollConfig(downloadConfig, destination, secrets, movie)
+    const jellyfinKey = jellyfinApiKey || downloadConfig.jellyfinApiKey
+    const pollConfig = buildPollConfig(downloadConfig, destination, secrets, jellyfinKey, movie)
     setDownloadJobs((current) => [
       { pendingId: id, createdAt: new Date().toISOString(), movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig },
       ...current,
@@ -614,7 +615,7 @@ export default function App() {
     try {
       const sourceUrl = await resolveStreamUrl(torboxApiKey, stream, stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined)
       const request = { id, url: sourceUrl, filename: makeDownloadFilename(movie, stream, episode), folderName: makeMovieFolderName(movie, episode) }
-      const legacy = destinationToLegacyConfig(downloadConfig, destination, secrets)
+      const legacy = destinationToLegacyConfig(downloadConfig, destination, secrets, jellyfinKey)
       const status = tauri
         ? await import('@tauri-apps/api/core').then(({ invoke }) => {
             if (pollConfig.mode === 'qbittorrent') {
@@ -1295,12 +1296,14 @@ export default function App() {
           preferences={preferences}
           downloadConfig={downloadConfig}
           torboxApiKey={torboxApiKey}
+          jellyfinApiKey={jellyfinApiKey}
           onClose={closeModal}
           onTabChange={setSettingsTab}
           onUpdatePlugin={(pluginId, patch) => setPlugins((current) => current.map((plugin) => (plugin.id === pluginId ? { ...plugin, ...patch } : plugin)))}
           onUpdatePreferences={updatePreferences}
           onUpdateDownloadConfig={updateDownloadConfig}
           onChangeTorboxApiKey={setTorboxApiKey}
+          onChangeJellyfinApiKey={setJellyfinApiKey}
           onOpenJellyfinSignIn={openJellyfinSignIn}
           onExportSettings={handleExportSettings}
           onImportSettings={handleImportSettings}

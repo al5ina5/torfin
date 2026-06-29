@@ -10,11 +10,6 @@ import { serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
-const dataDir = process.env.TORBOX_DATA_DIR || '/data'
-const jobsFile = join(dataDir, 'downloads.json')
-const serverLogFile = join(dataDir, 'server.log')
-const downloadLogDir = join(dataDir, 'logs')
-const jsonCacheDir = join(dataDir, 'json-cache')
 
 function isDockerRuntime() {
   try {
@@ -23,6 +18,19 @@ function isDockerRuntime() {
     return false
   }
 }
+
+function defaultDataRoot() {
+  if (process.env.TORBOX_DATA_DIR) return process.env.TORBOX_DATA_DIR
+  if (isDockerRuntime()) return '/data'
+  if (process.env.NODE_ENV === 'production') return '/data'
+  return join(__dirname, 'data')
+}
+
+const dataDir = defaultDataRoot()
+const jobsFile = join(dataDir, 'downloads.json')
+const serverLogFile = join(dataDir, 'server.log')
+const downloadLogDir = join(dataDir, 'logs')
+const jsonCacheDir = join(dataDir, 'json-cache')
 
 function defaultDownloadRoot() {
   if (process.env.TORBOX_DOWNLOAD_DIR) return process.env.TORBOX_DOWNLOAD_DIR

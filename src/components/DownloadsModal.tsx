@@ -1,5 +1,6 @@
 import { HardDriveDownload, Loader2, Pause, Play } from 'lucide-react'
 
+import { liveMetricsForJob, useLiveDownloadMetrics } from '../hooks/useLiveDownloadMetrics'
 import { bytesLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
 import type { DownloadJob, DownloadSort } from '../types'
 import { AppModal } from './AppModal'
@@ -31,6 +32,7 @@ export function DownloadsModal({
   onPauseJob,
   onResumeJob,
 }: DownloadsModalProps) {
+  const liveMetrics = useLiveDownloadMetrics(jobs)
   const sortedJobs = sortDownloadJobs(jobs, sort)
   const activeJobs = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused).length
   const sortLabel = {
@@ -105,7 +107,12 @@ export function DownloadsModal({
           <div className="space-y-2">
             {sortedJobs.map((job) => {
               const status = job.status
-              const progress = Math.round((status?.progress ?? 0) * 100)
+              const live = liveMetricsForJob(job, liveMetrics)
+              const progressValue = live?.progress ?? status?.progress ?? 0
+              const progress = Math.round(progressValue * 100)
+              const displaySpeed = live?.speed ?? status?.speed ?? 0
+              const displayEta = live?.eta ?? status?.eta ?? -1
+              const displayDownloaded = live?.downloaded ?? status?.downloaded ?? 0
               const isActive = isActiveDownloadJob(job) && !job.paused
               const isPaused = Boolean(job.paused && isActiveDownloadJob(job))
               const isStalled = status?.state === 'stalled'
@@ -118,9 +125,39 @@ export function DownloadsModal({
                       {isActive ? <Loader2 className="animate-spin text-[var(--mac-accent)]" size={14} /> : <HardDriveDownload size={14} />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="truncate text-[13px] font-semibold">{job.movie.name}</h3>
-                        <span className="shrink-0 text-[11px] text-[var(--mac-secondary)]">{progress}%</span>
+                      <div className="flex items-center gap-2">
+                        <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold">{job.movie.name}</h3>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <span className="text-[11px] text-[var(--mac-secondary)]">{progress}%</span>
+                          {isPaused && onResumeJob ? (
+                            <button
+                              type="button"
+                              onClick={() => onResumeJob(job)}
+                              className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
+                              title="Resume"
+                            >
+                              <Play size={13} />
+                            </button>
+                          ) : null}
+                          {isActive && onPauseJob ? (
+                            <button
+                              type="button"
+                              onClick={() => onPauseJob(job)}
+                              className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
+                              title="Pause"
+                            >
+                              <Pause size={13} />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => onRemoveJob(job)}
+                            className="grid size-7 place-items-center rounded-md border border-transparent text-[var(--mac-secondary)] transition hover:border-[var(--mac-border)] hover:bg-[var(--mac-control-hover)] hover:text-[var(--mac-text)]"
+                            title="Cancel"
+                          >
+                            <span className="text-[13px] font-semibold">x</span>
+                          </button>
+                        </div>
                       </div>
                       <p className="truncate text-[11px] leading-4 text-[var(--mac-secondary)]">{title}</p>
 
@@ -128,7 +165,7 @@ export function DownloadsModal({
                         <div className="mt-1.5">
                           <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mac-control)]">
                             <div
-                              className={`h-full rounded-full transition-all ${
+                              className={`h-full rounded-full transition-[width] duration-150 ease-linear ${
                                 isActive ? 'animate-pulse' : ''
                               } ${
                                 status.state.startsWith('error:')
@@ -139,17 +176,25 @@ export function DownloadsModal({
                                       ? 'bg-emerald-500'
                                       : 'bg-[var(--mac-accent)]'
                               }`}
-                              style={{ width: `${progress}%` }}
+                              style={{ width: `${Math.max(progressValue * 100, isActive ? 1 : 0)}%` }}
                             />
                           </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--mac-secondary)]">
-                            <span className="font-medium text-[var(--mac-text)]">{stateLabel}</span>
-                            <span>{bytesLabel(status.speed)}/s</span>
-                            <span>{etaLabel(status.eta)}</span>
-                            <span>
-                              {bytesLabel(status.downloaded)} / {status.size > 0 ? bytesLabel(status.size) : 'Unknown'}
-                            </span>
-                            {status.connections && isActive ? <span>{status.connections} conn</span> : null}
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] tabular-nums text-[var(--mac-secondary)]">
+                            {status.complete ? (
+                              <span>
+                                {status.size > 0 ? bytesLabel(status.size) : bytesLabel(status.downloaded)}
+                              </span>
+                            ) : (
+                              <>
+                                <span className="font-medium text-[var(--mac-text)]">{stateLabel}</span>
+                                <span>{bytesLabel(displaySpeed)}/s</span>
+                                <span>{etaLabel(displayEta)}</span>
+                                <span>
+                                  {bytesLabel(displayDownloaded)} / {status.size > 0 ? bytesLabel(status.size) : 'Unknown'}
+                                </span>
+                                {status.connections && isActive ? <span>{status.connections} conn</span> : null}
+                              </>
+                            )}
                           </div>
                         </div>
                       ) : job.error ? null : (
@@ -158,36 +203,6 @@ export function DownloadsModal({
                           Resolving Torbox result
                         </div>
                       )}
-                    </div>
-                    <div className="flex shrink-0 gap-1">
-                      {isPaused && onResumeJob ? (
-                        <button
-                          type="button"
-                          onClick={() => onResumeJob(job)}
-                          className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
-                          title="Resume"
-                        >
-                          <Play size={13} />
-                        </button>
-                      ) : null}
-                      {isActive && onPauseJob ? (
-                        <button
-                          type="button"
-                          onClick={() => onPauseJob(job)}
-                          className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
-                          title="Pause"
-                        >
-                          <Pause size={13} />
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => onRemoveJob(job)}
-                        className="grid size-7 place-items-center rounded-md border border-transparent text-[var(--mac-secondary)] transition hover:border-[var(--mac-border)] hover:bg-[var(--mac-control-hover)] hover:text-[var(--mac-text)]"
-                        title="Cancel"
-                      >
-                        <span className="text-[13px] font-semibold">x</span>
-                      </button>
                     </div>
                   </div>
 
