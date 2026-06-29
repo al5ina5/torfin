@@ -118,6 +118,7 @@ export type AppPreferences = {
   alwaysConfirmDownloadDestination: boolean
   jellyfinDuplicateAction: JellyfinDuplicateAction
   apiRequestTimeoutSeconds: ApiRequestTimeoutSeconds
+  useNativeMacPlayer: boolean
 }
 
 export type ThemeMode = 'system' | 'light' | 'dark'

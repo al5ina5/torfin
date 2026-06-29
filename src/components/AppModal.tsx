@@ -46,7 +46,7 @@ export function AppModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="app-modal-title"
-          className={`app-modal-drawer-sheet mac-elevated ${visible ? 'is-open' : ''} ${className}`}
+          className={`app-modal-drawer-sheet mac-elevated ${visible ? 'is-open' : ''} ${className} !w-full !max-w-none`}
           onClick={(event) => event.stopPropagation()}
           {...swipeDismiss}
         >
@@ -63,7 +63,7 @@ export function AppModal({
             </button>
           </header>
           {headerEnd ? <div className="app-modal-drawer-subheader shrink-0">{headerEnd}</div> : null}
-          <div className={bodyClassName}>{children}</div>
+          <div className={`app-modal-drawer-body ${bodyClassName}`}>{children}</div>
         </section>
       </div>
     )

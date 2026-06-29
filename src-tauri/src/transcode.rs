@@ -2,6 +2,16 @@ static ACTIVE_TRANSCODER: std::sync::OnceLock<std::sync::Mutex<Option<std::proce
     std::sync::OnceLock::new();
 static ACTIVE_TRANSCODE_DIR: std::sync::OnceLock<std::sync::Mutex<Option<std::path::PathBuf>>> =
     std::sync::OnceLock::new();
+static ACTIVE_TRANSCODE_CONFIG: std::sync::OnceLock<
+    std::sync::Mutex<Option<TranscodeSessionConfig>>,
+> = std::sync::OnceLock::new();
+
+#[derive(Clone)]
+struct TranscodeSessionConfig {
+    source_url: String,
+    audio_stream_index: Option<i64>,
+    subtitle_stream_index: Option<i64>,
+}
 
 const PROXY_USER_AGENT: &str = "Torfin/1.0.0-beta";
 const TRANSCODE_ATTEMPTS: usize = 3;
@@ -43,22 +53,53 @@ pub(crate) async fn start_hls_transcode(
     url: String,
     audio_stream_index: Option<i64>,
     subtitle_stream_index: Option<i64>,
+    start_seconds: Option<f64>,
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        start_hls_transcode_inner(url, audio_stream_index, subtitle_stream_index)
+        start_hls_transcode_inner(url, audio_stream_index, subtitle_stream_index, start_seconds)
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub(crate) async fn seek_hls_transcode(time: f64) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || seek_hls_transcode_inner(time))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn seek_hls_transcode_inner(time: f64) -> Result<String, String> {
+    let config = ACTIVE_TRANSCODE_CONFIG
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .map_err(|_| "Could not lock transcode session state.".to_string())?
+        .clone()
+        .ok_or_else(|| "No active transcode session to seek.".to_string())?;
+
+    start_hls_transcode_attempt(
+        &config.source_url,
+        config.audio_stream_index,
+        config.subtitle_stream_index,
+        time.max(0.0),
+    )
 }
 
 fn start_hls_transcode_inner(
     url: String,
     audio_stream_index: Option<i64>,
     subtitle_stream_index: Option<i64>,
+    start_seconds: Option<f64>,
 ) -> Result<String, String> {
     let mut last_error = None;
+    let start_at = start_seconds.unwrap_or(0.0).max(0.0);
     for attempt in 1..=TRANSCODE_ATTEMPTS {
-        match start_hls_transcode_attempt(&url, audio_stream_index, subtitle_stream_index) {
+        match start_hls_transcode_attempt(
+            &url,
+            audio_stream_index,
+            subtitle_stream_index,
+            start_at,
+        ) {
             Ok(result) => return Ok(result),
             Err(error) => {
                 let retriable = is_retriable_transcode_error(&error);
@@ -78,8 +119,18 @@ fn start_hls_transcode_attempt(
     url: &str,
     audio_stream_index: Option<i64>,
     subtitle_stream_index: Option<i64>,
+    start_seconds: f64,
 ) -> Result<String, String> {
     stop_active_transcoder();
+
+    *ACTIVE_TRANSCODE_CONFIG
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .map_err(|_| "Could not lock transcode session state.".to_string())? = Some(TranscodeSessionConfig {
+        source_url: url.to_string(),
+        audio_stream_index,
+        subtitle_stream_index,
+    });
 
     let ffmpeg = find_ffmpeg().ok_or_else(|| {
         "Install ffmpeg to play this video type. Homebrew: brew install ffmpeg".to_string()
@@ -119,6 +170,11 @@ fn start_hls_transcode_attempt(
 
     if source.scheme() == "http" || source.scheme() == "https" {
         args.extend(ffmpeg_http_input_args());
+    }
+
+    if start_seconds > 0.0 {
+        args.push("-ss".to_string());
+        args.push(format!("{start_seconds}"));
     }
 
     args.extend([

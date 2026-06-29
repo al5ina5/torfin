@@ -64,6 +64,7 @@ import { toast } from './lib/toast'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
 import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { isMacTauri, openNativePlayer } from './lib/native-player'
 import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
@@ -184,6 +185,7 @@ export default function App() {
   const [resolvingStreamKey, setResolvingStreamKey] = useState('')
   const [downloadingStreamKey, setDownloadingStreamKey] = useState('')
   const [playbackUrl, setPlaybackUrl] = useState('')
+  const [nativePlayback, setNativePlayback] = useState<{ player: string; title: string; mode: 'external' | 'window' } | null>(null)
   const [currentSourceUrl, setCurrentSourceUrl] = useState('')
   const [playbackTitle, setPlaybackTitle] = useState('')
   const [playbackError, setPlaybackError] = useState('')
@@ -1053,6 +1055,7 @@ export default function App() {
     setPlaybackError('')
     setPlaybackStatus('Resolving')
     setPlaybackUrl('')
+    setNativePlayback(null)
     setCurrentSourceUrl('')
     setMediaInfo(null)
     setSelectedAudioIndex(null)
@@ -1061,20 +1064,39 @@ export default function App() {
     try {
       const directUrl = stream.url?.startsWith('http') && !stream.infoHash ? stream.url : undefined
       const sourceUrl = await resolveStreamUrl(torboxApiKey, stream, directUrl)
+      const title = `${selectedMovie.name}${episodePlaybackLabel()} - ${stream.pluginName}`
       setCurrentSourceUrl(sourceUrl)
-      await preparePlayback(
-        sourceUrl,
-        `${selectedMovie.name}${episodePlaybackLabel()} - ${stream.pluginName}`,
-        null,
-        null,
-        resumeAt,
-      )
+      setPlaybackTitle(title)
+
+      if (isMacTauri() && preferences.useNativeMacPlayer) {
+        setPlaybackStatus('Opening native player')
+        const result = await openNativePlayer(sourceUrl, title)
+        setNativePlayback({ player: result.player, title, mode: result.mode })
+        setPlaybackStatus('')
+        toast.success(`Playing in ${result.player}`)
+        return
+      }
+
+      await preparePlayback(sourceUrl, title, null, null, resumeAt)
     } catch (error) {
       setPlaybackError(error instanceof Error ? error.message : 'Could not start playback.')
       setPlaybackStatus('')
     } finally {
       setResolvingStreamKey('')
     }
+  }
+
+  async function playEmbeddedFromNative() {
+    if (!currentSourceUrl) return
+    const resumeAt = getPlaybackResumePosition(selectedMovie!, episodeSelection?.season, episodeSelection?.episode)
+    setNativePlayback(null)
+    await preparePlayback(
+      currentSourceUrl,
+      playbackTitle || 'Player',
+      selectedAudioIndex,
+      selectedSubtitleIndex,
+      resumeAt,
+    )
   }
 
   const handlePlaybackTimeUpdate = useCallback(
@@ -1613,6 +1635,8 @@ export default function App() {
           playbackUrl={playbackUrl}
           playbackTitle={playbackTitle}
           playbackStatus={playbackStatus}
+          nativePlayback={nativePlayback}
+          onPlayEmbedded={() => { void playEmbeddedFromNative() }}
           playbackStartAt={playbackStartAt}
           playbackDuration={playbackDuration}
           playbackMediaOffset={playbackMediaOffset}

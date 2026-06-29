@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { Languages, Subtitles } from 'lucide-react'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 
 import { insertAirPlayButton, registerAirPlayButton } from '../lib/videoPlayerAirPlay'
-import { insertTrackMenuButton, registerTrackMenuButton, syncTrackMenu } from '../lib/videoPlayerTracks'
+import { registerTrackMenuButton, syncTrackMenu } from '../lib/videoPlayerTracks'
 import { isTranscodePlaybackUrl, resolvePlaybackUrl, seekHlsTranscode, transcodeSessionId } from '../lib/playback'
 import type { MediaInfo } from '../types'
 
@@ -25,8 +26,20 @@ type VideoPlayerProps = {
   onEnded?: () => void
 }
 
-const SEEK_DEBOUNCE_MS = 450
-const SEEK_MIN_SERVER_DELTA_SECS = 4
+const SCRUB_SEEK_DEBOUNCE_MS = 300
+const SEEK_LOCK_TIMEOUT_MS = 15000
+
+function formatClock(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const total = Math.floor(seconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const remainder = total % 60
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`
+  }
+  return `${minutes}:${String(remainder).padStart(2, '0')}`
+}
 
 function sourceType(url: string) {
   const path = (() => {
@@ -98,9 +111,20 @@ function isTimeBuffered(video: HTMLVideoElement, time: number) {
 type TimelineState = {
   nativeCurrentTime: (time?: number) => number | undefined
   seekLock: boolean
+  seekLockTimer: ReturnType<typeof setTimeout> | null
   sessionUrl: string
   seekDebounceTimer: ReturnType<typeof setTimeout> | null
   pendingSeekTarget: number | null
+  flushPendingSeek: (() => void) | null
+}
+
+function clearSeekLock(state: TimelineState, onSeekingChange?: (seeking: boolean) => void) {
+  if (state.seekLockTimer) {
+    clearTimeout(state.seekLockTimer)
+    state.seekLockTimer = null
+  }
+  state.seekLock = false
+  onSeekingChange?.(false)
 }
 
 function installAbsoluteTimeline(
@@ -122,9 +146,11 @@ function installAbsoluteTimeline(
     playerState.torfinTimeline = {
       nativeCurrentTime: player.currentTime.bind(player),
       seekLock: false,
+      seekLockTimer: null,
       sessionUrl: url,
       seekDebounceTimer: null,
       pendingSeekTarget: null,
+      flushPendingSeek: null,
     }
   }
 
@@ -142,7 +168,12 @@ function installAbsoluteTimeline(
 
     state.seekLock = true
     onSeekingChange?.(true)
-    const shouldResume = player.scrubbing() || !player.paused()
+    if (state.seekLockTimer) clearTimeout(state.seekLockTimer)
+    state.seekLockTimer = setTimeout(() => {
+      clearSeekLock(state, onSeekingChange)
+    }, SEEK_LOCK_TIMEOUT_MS)
+
+    const shouldResume = !player.paused()
     player.pause()
 
     void seekHlsTranscode(sessionId, absoluteTarget)
@@ -153,34 +184,38 @@ function installAbsoluteTimeline(
         swapTranscodeSource(player, nextUrl)
         player.one('loadedmetadata', () => {
           state.nativeCurrentTime(0)
-          state.seekLock = false
-          onSeekingChange?.(false)
+          clearSeekLock(state, onSeekingChange)
           if (shouldResume) {
             void player.play()
           }
         })
       })
       .catch(() => {
-        state.seekLock = false
-        onSeekingChange?.(false)
+        clearSeekLock(state, onSeekingChange)
         if (shouldResume) {
           void player.play()
         }
       })
   }
 
+  const flushPendingSeek = () => {
+    if (state.seekDebounceTimer) {
+      clearTimeout(state.seekDebounceTimer)
+      state.seekDebounceTimer = null
+    }
+    const target = state.pendingSeekTarget
+    state.pendingSeekTarget = null
+    if (target === null || state.seekLock) return
+    executeServerSeek(target)
+  }
+  state.flushPendingSeek = flushPendingSeek
+
   const scheduleServerSeek = (absoluteTarget: number) => {
     state.pendingSeekTarget = absoluteTarget
     if (state.seekDebounceTimer) {
       clearTimeout(state.seekDebounceTimer)
     }
-    state.seekDebounceTimer = setTimeout(() => {
-      state.seekDebounceTimer = null
-      const target = state.pendingSeekTarget
-      state.pendingSeekTarget = null
-      if (target === null) return
-      executeServerSeek(target)
-    }, SEEK_DEBOUNCE_MS)
+    state.seekDebounceTimer = setTimeout(flushPendingSeek, SCRUB_SEEK_DEBOUNCE_MS)
   }
 
   player.currentTime = function currentTime(time?: number) {
@@ -201,12 +236,12 @@ function installAbsoluteTimeline(
 
     const currentAbsolute = (state.nativeCurrentTime() ?? 0) + mediaOffsetRef.current
     const delta = Math.abs(absoluteTarget - currentAbsolute)
+    if (delta < 0.35) return
+
     const localTarget = absoluteTarget - mediaOffsetRef.current
     const video = getVideoElement(player)
 
-    if (delta < 0.35) return
-
-    if (delta < SEEK_MIN_SERVER_DELTA_SECS && video && isTimeBuffered(video, localTarget)) {
+    if (localTarget >= 0 && video && isTimeBuffered(video, localTarget)) {
       state.nativeCurrentTime(localTarget)
       return
     }
@@ -216,12 +251,7 @@ function installAbsoluteTimeline(
       return
     }
 
-    if (delta < SEEK_MIN_SERVER_DELTA_SECS) {
-      state.nativeCurrentTime(localTarget)
-      return
-    }
-
-    scheduleServerSeek(absoluteTarget)
+    executeServerSeek(absoluteTarget)
   }
 }
 
@@ -332,6 +362,8 @@ export function VideoPlayer({
   const mediaOffsetRef = useRef(mediaOffset ?? 0)
   const [buffering, setBuffering] = useState(false)
   const [serverSeeking, setServerSeeking] = useState(false)
+  const [displayTime, setDisplayTime] = useState(0)
+  const [displayDuration, setDisplayDuration] = useState(knownDuration ?? mediaInfo?.duration ?? 0)
 
   onErrorRef.current = onError
   onTimeUpdateRef.current = onTimeUpdate
@@ -379,6 +411,12 @@ export function VideoPlayer({
     const handleTimeUpdate = () => {
       const current = player.currentTime()
       const duration = player.duration()
+      if (typeof current === 'number' && Number.isFinite(current)) {
+        setDisplayTime(current)
+      }
+      if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
+        setDisplayDuration(duration)
+      }
       if (typeof current === 'number' && typeof duration === 'number' && Number.isFinite(current) && Number.isFinite(duration) && duration > 0) {
         onTimeUpdateRef.current?.(current, duration)
       }
@@ -387,6 +425,10 @@ export function VideoPlayer({
     const handleWaiting = () => setBuffering(true)
     const handlePlaying = () => setBuffering(false)
     const handleCanPlay = () => setBuffering(false)
+    const handleSeeked = () => {
+      const timeline = (player as ReturnType<typeof videojs> & { torfinTimeline?: TimelineState }).torfinTimeline
+      timeline?.flushPendingSeek?.()
+    }
 
     player.on('error', handleError)
     player.on('timeupdate', handleTimeUpdate)
@@ -394,6 +436,7 @@ export function VideoPlayer({
     player.on('waiting', handleWaiting)
     player.on('playing', handlePlaying)
     player.on('canplay', handleCanPlay)
+    player.on('seeked', handleSeeked)
     player.ready(() => {
       const el = player.el().querySelector('video')
       if (el instanceof HTMLVideoElement) {
@@ -401,7 +444,6 @@ export function VideoPlayer({
         el.setAttribute('webkit-playsinline', 'true')
       }
       insertAirPlayButton(player)
-      insertTrackMenuButton(player)
       syncTrackMenu(player, mediaInfo, selectedAudioIndex, selectedSubtitleIndex)
       applyKnownDuration(player, durationRef.current)
       installAbsoluteTimeline(player, {
@@ -418,6 +460,10 @@ export function VideoPlayer({
 
     const handleDurationChange = () => {
       applyKnownDuration(player, durationRef.current)
+      const duration = player.duration()
+      if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
+        setDisplayDuration(duration)
+      }
     }
     player.on('durationchange', handleDurationChange)
     player.on('loadedmetadata', handleDurationChange)
@@ -425,15 +471,15 @@ export function VideoPlayer({
     return () => {
       ignoreErrorsRef.current = true
       const timeline = (player as ReturnType<typeof videojs> & { torfinTimeline?: TimelineState }).torfinTimeline
-      if (timeline?.seekDebounceTimer) {
-        clearTimeout(timeline.seekDebounceTimer)
-      }
+      if (timeline?.seekDebounceTimer) clearTimeout(timeline.seekDebounceTimer)
+      if (timeline?.seekLockTimer) clearTimeout(timeline.seekLockTimer)
       player.off('error', handleError)
       player.off('timeupdate', handleTimeUpdate)
       player.off('ended', handleEnded)
       player.off('waiting', handleWaiting)
       player.off('playing', handlePlaying)
       player.off('canplay', handleCanPlay)
+      player.off('seeked', handleSeeked)
       player.off('durationchange', handleDurationChange)
       player.off('loadedmetadata', handleDurationChange)
       destroyPlayer(player, host)
@@ -443,6 +489,9 @@ export function VideoPlayer({
 
   useEffect(() => {
     durationRef.current = knownDuration ?? mediaInfo?.duration ?? null
+    if (knownDuration ?? mediaInfo?.duration) {
+      setDisplayDuration(knownDuration ?? mediaInfo?.duration ?? 0)
+    }
     if (mediaOffset !== null && mediaOffset !== undefined) {
       mediaOffsetRef.current = mediaOffset
     }
@@ -463,45 +512,20 @@ export function VideoPlayer({
 
   if (!url) return null
 
-  const hasTracks = Boolean(mediaInfo?.audioTracks.length || mediaInfo?.subtitleTracks.length)
+  const transcode = isTranscodePlaybackUrl(url)
+  const hasAudioTracks = Boolean(mediaInfo?.audioTracks.length)
+  const hasSubtitleTracks = Boolean(mediaInfo?.subtitleTracks.length)
+  const showTrackToolbar = transcode || hasAudioTracks || hasSubtitleTracks
 
   return (
     <section className="movie-player block overflow-hidden bg-black text-white">
       <div className="movie-player-stage">
         <div className="movie-player-titlebar">
           <span className="movie-player-title">{title}</span>
-          {hasTracks ? (
-            <div className="movie-player-titlebar-tracks lg:hidden">
-              {mediaInfo?.audioTracks.length ? (
-                <select
-                  value={selectedAudioIndex ?? ''}
-                  onChange={(event) => onSelectAudio(event.target.value)}
-                  className="movie-player-titlebar-select"
-                  aria-label="Audio track"
-                >
-                  {mediaInfo.audioTracks.map((track) => (
-                    <option key={track.index} value={track.index}>
-                      {track.label}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              {mediaInfo?.subtitleTracks.length ? (
-                <select
-                  value={selectedSubtitleIndex ?? ''}
-                  onChange={(event) => onSelectSubtitle(event.target.value)}
-                  className="movie-player-titlebar-select"
-                  aria-label="Subtitles"
-                >
-                  <option value="">Off</option>
-                  {mediaInfo.subtitleTracks.map((track) => (
-                    <option key={track.index} value={track.index}>
-                      {track.label}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
+          {displayDuration > 0 ? (
+            <span className="movie-player-titlebar-time">
+              {formatClock(displayTime)} / {formatClock(displayDuration)}
+            </span>
           ) : null}
         </div>
         <div ref={hostRef} className="movie-player-video-host aspect-video w-full" />
@@ -512,6 +536,57 @@ export function VideoPlayer({
           </div>
         ) : null}
       </div>
+
+      {showTrackToolbar ? (
+        <div className="movie-player-trackbar">
+          <div className="movie-player-field">
+            <span className="movie-player-field-label">
+              <Languages size={13} aria-hidden="true" />
+              Audio
+            </span>
+            {hasAudioTracks ? (
+              <select
+                value={selectedAudioIndex ?? ''}
+                onChange={(event) => onSelectAudio(event.target.value)}
+                className="movie-player-select"
+                aria-label="Audio track"
+              >
+                {mediaInfo?.audioTracks.map((track) => (
+                  <option key={track.index} value={track.index} className="bg-[#18181b]">
+                    {track.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="movie-player-track-placeholder">Detecting tracks…</span>
+            )}
+          </div>
+
+          <div className="movie-player-field">
+            <span className="movie-player-field-label">
+              <Subtitles size={13} aria-hidden="true" />
+              Subtitles
+            </span>
+            {hasSubtitleTracks ? (
+              <select
+                value={selectedSubtitleIndex ?? ''}
+                onChange={(event) => onSelectSubtitle(event.target.value)}
+                className="movie-player-select"
+                aria-label="Subtitles"
+              >
+                <option value="" className="bg-[#18181b]">Off</option>
+                {mediaInfo?.subtitleTracks.map((track) => (
+                  <option key={track.index} value={track.index} className="bg-[#18181b]">
+                    {track.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="movie-player-track-placeholder">None detected</span>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

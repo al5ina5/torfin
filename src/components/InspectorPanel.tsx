@@ -4,6 +4,7 @@ import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
 import type { JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
 import { StreamResults } from './StreamResults'
 import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
+import { NativePlaybackBanner } from './NativePlaybackBanner'
 import { VideoPlayer } from './VideoPlayer'
 
 type InspectorPanelProps = {
@@ -36,6 +37,8 @@ type InspectorPanelProps = {
   playbackUrl: string
   playbackTitle: string
   playbackStatus: string
+  nativePlayback: { player: string; title: string; mode: 'external' | 'window' } | null
+  onPlayEmbedded: () => void
   playbackStartAt: number | null
   playbackDuration: number | null
   playbackMediaOffset: number
@@ -93,6 +96,8 @@ function InspectorContent({
   playbackUrl,
   playbackTitle,
   playbackStatus,
+  nativePlayback,
+  onPlayEmbedded,
   playbackStartAt,
   playbackDuration,
   playbackMediaOffset,
@@ -320,9 +325,17 @@ function InspectorContent({
           </div>
         ) : null}
 
-        {playbackUrl || playbackStatus || nextEpisodePrompt ? (
+        {playbackUrl || playbackStatus || nativePlayback || nextEpisodePrompt ? (
           <section className="overflow-hidden rounded-lg border border-black/20 bg-black shadow-lg">
-            {playbackUrl ? (
+            {nativePlayback ? (
+              <NativePlaybackBanner
+                player={nativePlayback.player}
+                title={nativePlayback.title}
+                mode={nativePlayback.mode}
+                onPlayEmbedded={onPlayEmbedded}
+              />
+            ) : null}
+            {!nativePlayback && playbackUrl ? (
               <VideoPlayer
                 key={playbackUrl}
                 url={playbackUrl}
@@ -342,7 +355,7 @@ function InspectorContent({
                 onEnded={onPlaybackEnded}
               />
             ) : null}
-            {playbackStatus ? (
+            {!nativePlayback && playbackStatus ? (
               <PlaybackStatusOverlay status={playbackStatus} mediaInfo={mediaInfo} />
             ) : null}
             {nextEpisodePrompt ? (

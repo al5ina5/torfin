@@ -27,6 +27,7 @@ export const defaultPreferences: AppPreferences = {
   alwaysConfirmDownloadDestination: false,
   jellyfinDuplicateAction: 'ask',
   apiRequestTimeoutSeconds: 15,
+  useNativeMacPlayer: true,
 }
 
 const startupCatalogIds: StartupCatalogId[] = [
@@ -80,6 +81,7 @@ export function normalizePreferences(stored: Partial<AppPreferences>): AppPrefer
     resumeMinSeconds,
     completeRatioPercent,
     alwaysConfirmDownloadDestination: stored.alwaysConfirmDownloadDestination ?? defaultPreferences.alwaysConfirmDownloadDestination,
+    useNativeMacPlayer: stored.useNativeMacPlayer ?? defaultPreferences.useNativeMacPlayer,
     jellyfinDuplicateAction,
     apiRequestTimeoutSeconds,
   }

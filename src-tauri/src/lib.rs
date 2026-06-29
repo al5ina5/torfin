@@ -1,6 +1,7 @@
 mod badge;
 mod downloads;
 mod jellyfin;
+mod native_player;
 mod secrets;
 mod torbox;
 mod transcode;
@@ -16,6 +17,9 @@ pub fn run() {
             transcode::inspect_media,
             transcode::get_hls_transcode_progress,
             transcode::start_hls_transcode,
+            transcode::seek_hls_transcode,
+            native_player::supports_native_player,
+            native_player::open_native_player,
             downloads::cancel_remote_url_download,
             downloads::start_qbittorrent_download,
             downloads::get_qbittorrent_download,

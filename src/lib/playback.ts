@@ -61,6 +61,7 @@ export async function startHlsTranscode(
       url: sourceUrl,
       audioStreamIndex,
       subtitleStreamIndex,
+      startSeconds,
     })
     return { url, mediaOffset: startSeconds }
   }
@@ -74,17 +75,28 @@ export async function startHlsTranscode(
 }
 
 export function isTranscodePlaybackUrl(url: string) {
-  return url.includes('/api/hls-transcode/') || url.includes('hls-transcode')
+  if (url.includes('/api/hls-transcode/') || url.includes('hls-transcode')) return true
+  try {
+    const parsed = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://127.0.0.1')
+    if (!parsed.pathname.endsWith('.m3u8')) return false
+    return parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost'
+  } catch {
+    return false
+  }
 }
 
 export function transcodeSessionId(url: string) {
   const match = url.match(/\/api\/hls-transcode\/([^/]+)\//)
-  return match?.[1] ?? null
+  if (match?.[1]) return match[1]
+  if (isTranscodePlaybackUrl(url) && isTauriRuntime()) return 'tauri-local'
+  return null
 }
 
 export async function seekHlsTranscode(sessionId: string, time: number): Promise<HlsTranscodeResult> {
   if (isTauriRuntime()) {
-    throw new Error('Seek is not supported in the desktop app yet.')
+    const { invoke } = await import('@tauri-apps/api/core')
+    const url = await invoke<string>('seek_hls_transcode', { time })
+    return { url, mediaOffset: time }
   }
 
   return postApi<HlsTranscodeResult>(`/api/hls-transcode/${sessionId}/seek`, { time })

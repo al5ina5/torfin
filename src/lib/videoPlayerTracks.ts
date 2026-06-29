@@ -58,6 +58,16 @@ export function registerTrackMenuButton() {
       const mediaInfo = this.player_.torfinMediaInfo
       const items = []
 
+      if (!mediaInfo?.audioTracks?.length && !mediaInfo?.subtitleTracks?.length) {
+        items.push(new TrackMenuItem(this.player_, {
+          label: 'No tracks detected',
+          selectable: false,
+          trackKind: 'header',
+          trackValue: '',
+        }))
+        return items
+      }
+
       if (mediaInfo?.audioTracks?.length) {
         items.push(new TrackMenuItem(this.player_, {
           label: 'Audio',
@@ -105,9 +115,6 @@ export function registerTrackMenuButton() {
 
 /** @param {ReturnType<typeof videojs>} player */
 export function insertTrackMenuButton(player) {
-  const mediaInfo = player.torfinMediaInfo
-  if (!mediaInfo?.audioTracks?.length && !mediaInfo?.subtitleTracks?.length) return
-
   const controlBar = player.getChild('controlBar')
   if (!controlBar || controlBar.getChild('TrackMenuButton')) return
 
@@ -121,6 +128,8 @@ export function syncTrackMenu(player, mediaInfo, selectedAudioIndex, selectedSub
   player.torfinMediaInfo = mediaInfo
   player.torfinSelectedAudio = selectedAudioIndex
   player.torfinSelectedSubtitle = selectedSubtitleIndex
+
+  insertTrackMenuButton(player)
 
   const button = player.getChild('controlBar')?.getChild('TrackMenuButton')
   if (!button) return

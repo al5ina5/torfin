@@ -1,6 +1,7 @@
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
 
 import { defaultCustomProfile } from '../lib/custom-profiles'
+import { isMacTauri } from '../lib/native-player'
 import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
 import type {
   AppPreferences,
@@ -229,7 +230,18 @@ export function PreferencesModal({
 
       {tab === 'playback' ? (
         <div className="mx-auto max-w-xl space-y-0">
-          <SettingsSection title="Auto Play" first>
+          {isMacTauri() ? (
+            <SettingsSection title="macOS Player" first>
+              <SettingsToggle
+                label="Use native macOS player"
+                hint="Open streams in IINA, mpv, or VLC instead of the in-app web player. Handles MKV, multi-audio, and subtitles without transcoding."
+                checked={preferences.useNativeMacPlayer}
+                onChange={(useNativeMacPlayer) => onUpdatePreferences({ useNativeMacPlayer })}
+              />
+            </SettingsSection>
+          ) : null}
+
+          <SettingsSection title="Auto Play" first={!isMacTauri()}>
             <SettingsToggle
               label="Auto play resolved streams"
               hint="When streams load for a title, start playback with the top matching result."

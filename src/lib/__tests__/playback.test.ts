@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isBrowserPlayableUrl, isTorboxCdnUrl, needsTranscodeFallback, shouldTranscodeDirectly } from '../playback'
+import { isBrowserPlayableUrl, isTorboxCdnUrl, isTranscodePlaybackUrl, needsTranscodeFallback, shouldTranscodeDirectly } from '../playback'
 
 describe('isBrowserPlayableUrl', () => {
   it('treats common browser formats as playable', () => {
@@ -42,5 +42,12 @@ describe('needsTranscodeFallback', () => {
 
   it('does not fall back after switching to hls', () => {
     expect(needsTranscodeFallback('https://cdn.example.com/movie.mkv', '/api/hls-transcode/id/playlist.m3u8')).toBe(false)
+  })
+})
+
+describe('isTranscodePlaybackUrl', () => {
+  it('detects api and local hls playlists', () => {
+    expect(isTranscodePlaybackUrl('/api/hls-transcode/id/playlist.m3u8')).toBe(true)
+    expect(isTranscodePlaybackUrl('http://127.0.0.1:49281/playlist.m3u8')).toBe(true)
   })
 })
