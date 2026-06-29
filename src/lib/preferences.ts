@@ -14,7 +14,7 @@ export const defaultPreferences: AppPreferences = {
   customProfiles: [],
   autoPlayNextEpisode: true,
   downloadNotifications: true,
-  theme: 'system',
+  theme: 'dark',
   libraryViewMode: 'grid',
   defaultContentType: 'movie',
   defaultStartupCatalog: 'lastUsed',

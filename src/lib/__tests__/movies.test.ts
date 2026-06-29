@@ -33,27 +33,43 @@ describe('catalog URLs', () => {
 describe('catalogUrlWithFilters', () => {
   const trending = CINEMETA_CATALOG_URLS.trending
 
-  it('routes genre presets to a paginatable catalog with client-side filtering', () => {
+  it('routes genre presets to the matching genre catalog with client-side filtering', () => {
     const horror = builtInFilterPresets.find((preset) => preset.id === 'builtin-top-horror')!
     expect(catalogUrlWithFilters(trending, horror.filters, 'movie', 'trending')).toBe(
-      'https://v3-cinemeta.strem.io/catalog/movie/top.json#genre:Horror&minRating:7&sort:ratingDesc',
+      'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Horror.json#minRating:7&sort:ratingDesc',
     )
   })
 
-  it('routes sidebar genre catalogs to a paginatable catalog', () => {
+  it('routes sidebar genre catalogs to the genre catalog endpoint', () => {
     const horrorUrl = CINEMETA_CATALOG_URLS.horror as string
-    expect(catalogUrlWithFilters(horrorUrl, defaultMovieFilters, 'movie', 'horror')).toBe(
-      'https://v3-cinemeta.strem.io/catalog/movie/top.json#catalog:horror&genre:Horror',
-    )
+    expect(catalogUrlWithFilters(horrorUrl, defaultMovieFilters, 'movie', 'horror')).toBe(horrorUrl)
   })
 
-  it('routes decade presets to a representative year catalog', () => {
+  it('routes decade presets to top or representative year catalogs', () => {
     const nineties = builtInFilterPresets.find((preset) => preset.id === 'builtin-90s-classics')!
     expect(catalogUrlWithFilters(trending, nineties.filters, 'movie')).toContain('/catalog/movie/year/genre=1995.json')
 
+    const seventies = builtInFilterPresets.find((preset) => preset.id === 'builtin-70s-cinema')!
+    expect(catalogUrlWithFilters(trending, seventies.filters, 'movie')).toContain('/catalog/movie/year/genre=1975.json')
+
+    const twoThousands = builtInFilterPresets.find((preset) => preset.id === 'builtin-2000s-hits')!
+    expect(catalogUrlWithFilters(trending, twoThousands.filters, 'movie')).toContain('/catalog/movie/year/genre=2005.json')
+
     const newDecade = builtInFilterPresets.find((preset) => preset.id === 'builtin-new-this-decade')!
-    expect(catalogUrlWithFilters(trending, newDecade.filters, 'movie')).toContain(
-      `/catalog/movie/year/genre=${CURRENT_RELEASE_YEAR}.json`,
+    expect(catalogUrlWithFilters(trending, newDecade.filters, 'movie')).toBe(
+      'https://v3-cinemeta.strem.io/catalog/movie/top.json#yearFrom:2020&sort:yearDesc',
+    )
+  })
+
+  it('routes older genre+year presets to representative year catalogs', () => {
+    const action80s = builtInFilterPresets.find((preset) => preset.id === 'builtin-80s-action')!
+    expect(catalogUrlWithFilters(trending, action80s.filters, 'movie')).toContain('/catalog/movie/year/genre=1985.json')
+  })
+
+  it('routes rating-only presets to top', () => {
+    const acclaimed = builtInFilterPresets.find((preset) => preset.id === 'builtin-critically-acclaimed')!
+    expect(catalogUrlWithFilters(trending, acclaimed.filters, 'movie')).toBe(
+      'https://v3-cinemeta.strem.io/catalog/movie/top.json#minRating:8&sort:ratingDesc',
     )
   })
 

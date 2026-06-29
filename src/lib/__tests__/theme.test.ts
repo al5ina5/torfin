@@ -21,8 +21,8 @@ describe('theme', () => {
     document.documentElement.removeAttribute('data-theme')
   })
 
-  it('defaults to system theme', () => {
-    expect(loadThemeMode()).toBe('system')
+  it('defaults to dark theme', () => {
+    expect(loadThemeMode()).toBe('dark')
   })
 
   it('persists theme mode', () => {

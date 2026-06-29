@@ -64,7 +64,7 @@ import {
   serverDownloadJellyfinPayload,
   withDownloadTimestamp,
 } from './lib/downloads'
-import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
+import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
 import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery, setRecentViewsLimit } from './lib/history'
 import { hydrateUrl, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
@@ -268,6 +268,10 @@ export default function App() {
   const titleLoadRef = useRef<string | null>(null)
   const shouldRemoteSearch = debouncedQuery.length >= 2
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
+  const activeFilterPreset = route.presetId
+    ? findFilterPresetByRouteSlug(route.presetId, customFilterPresets)
+    : undefined
+  const browseTitle = activeFilterPreset?.name ?? selectedCatalog.label
   const baseCatalogUrl = isLibraryCatalog(catalogId) ? '' : catalogUrlMap(contentType)[selectedCatalog.id as keyof ReturnType<typeof catalogUrlMap>]
   const filteredCatalogUrl = baseCatalogUrl
     ? catalogUrlWithFilters(baseCatalogUrl || catalogUrlMap(contentType).trending, movieFilters, contentType, catalogId)
@@ -669,7 +673,7 @@ export default function App() {
 
   const displayedMovies = useMemo(() => {
     const local = query.trim() ? movies.filter((movie) => `${movie.name} ${movie.releaseInfo || ''}`.toLowerCase().includes(query.trim().toLowerCase())) : movies
-    const filters = effectiveMovieFilters(catalogId, movieFilters)
+    const filters = clientFiltersForCatalog(filteredCatalogUrl, catalogId, movieFilters)
     return filterAndSortMovies(shouldRemoteSearch ? (searchData || []) : local, filters)
   }, [catalogId, movies, movieFilters, query, searchData, shouldRemoteSearch])
   const hasActiveSearchOrFilters =
@@ -1730,7 +1734,7 @@ export default function App() {
             ) : null}
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <div className="min-w-0">
-                <h2 className="truncate text-[15px] font-semibold tracking-normal">{selectedCatalog.label}</h2>
+                <h2 className="truncate text-[15px] font-semibold tracking-normal">{browseTitle}</h2>
                 <p className="text-[11px] text-[var(--mac-secondary)] transition-opacity duration-150">
                   {moviesLoading ? 'Loading…' : `${displayedMovies.length} ${displayedMovies.length === 1 ? contentLabelSingular : contentLabelPlural}`}
                 </p>

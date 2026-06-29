@@ -50,6 +50,14 @@ export function effectiveMovieFilters(catalogId: string, filters: MovieFilters):
   }
 }
 
+export function clientFiltersForCatalog(url: string, catalogId: string, filters: MovieFilters): MovieFilters {
+  const effective = effectiveMovieFilters(catalogId, filters)
+  if (isGenreCatalogUrl(url)) {
+    return { ...effective, genre: '' }
+  }
+  return effective
+}
+
 export const filterYears = Array.from({ length: 120 }, (_, index) => String(CURRENT_RELEASE_YEAR - index))
 
 export const defaultMovieFilters: MovieFilters = {
@@ -76,14 +84,18 @@ function yearCatalogUrl(catalogRoot: 'movie' | 'series', year: number) {
   return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/year/genre=${encodeURIComponent(String(year))}.json`
 }
 
-function paginatableCatalogUrl(contentType: ContentType, baseUrl: string) {
+function genreCatalogApiUrl(contentType: ContentType, genre: string) {
   const catalogRoot = contentType === 'series' ? 'series' : 'movie'
-  const kind = baseUrl.includes('imdbRating') ? 'imdbRating' : 'top'
-  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${kind}.json`
+  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/top/genre=${encodeURIComponent(genre)}.json`
 }
 
-function isGenreCatalogUrl(url: string) {
-  return /\/genre=/.test(url.replace(/^https?:\/\/[^/]+/, ''))
+function paginatableCatalogUrl(contentType: ContentType) {
+  const catalogRoot = contentType === 'series' ? 'series' : 'movie'
+  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/top.json`
+}
+
+export function isGenreCatalogUrl(url: string) {
+  return /\/genre=/.test(url.split('#')[0].replace(/^https?:\/\/[^/]+/, ''))
 }
 
 function catalogViewKey(apiUrl: string, catalogId: string, filters: MovieFilters, baseUrl: string) {
@@ -114,6 +126,14 @@ function representativeYearForRange(filters: MovieFilters) {
   return CURRENT_RELEASE_YEAR
 }
 
+function shouldUseRepresentativeYearCatalog(filters: MovieFilters) {
+  if (filters.sortBy === 'yearDesc') return false
+  const from = filters.yearFrom ? Number(filters.yearFrom) : Number.NaN
+  const to = filters.yearTo ? Number(filters.yearTo) : Number.NaN
+  const latestYear = Number.isFinite(to) ? to : (Number.isFinite(from) ? CURRENT_RELEASE_YEAR : Number.NaN)
+  return Number.isFinite(latestYear) && latestYear < 2010
+}
+
 export function catalogUrlWithFilters(
   baseUrl: string,
   filters: MovieFilters,
@@ -129,8 +149,20 @@ export function catalogUrlWithFilters(
   }
 
   if (effective.genre) {
-    const apiUrl = paginatableCatalogUrl(contentType, baseUrl)
-    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
+    if (effective.yearFrom || effective.yearTo) {
+      if (shouldUseRepresentativeYearCatalog(effective)) {
+        return catalogViewKey(
+          yearCatalogUrl(catalogRoot, representativeYearForRange(effective)),
+          catalogId,
+          effective,
+          baseUrl,
+        )
+      }
+      const apiUrl = paginatableCatalogUrl(contentType)
+      return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
+    }
+    const apiUrl = genreCatalogApiUrl(contentType, effective.genre)
+    return catalogViewKey(apiUrl, catalogId, { ...effective, genre: '' }, baseUrl)
   }
 
   if (effective.apiCatalog) {
@@ -138,12 +170,25 @@ export function catalogUrlWithFilters(
   }
 
   if (effective.yearFrom || effective.yearTo) {
-    return yearCatalogUrl(catalogRoot, representativeYearForRange(effective))
+    if (shouldUseRepresentativeYearCatalog(effective)) {
+      return catalogViewKey(
+        yearCatalogUrl(catalogRoot, representativeYearForRange(effective)),
+        catalogId,
+        effective,
+        baseUrl,
+      )
+    }
+    const apiUrl = paginatableCatalogUrl(contentType)
+    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
+  }
+
+  if (effective.minRating || (effective.sortBy && effective.sortBy !== 'catalog')) {
+    const apiUrl = paginatableCatalogUrl(contentType)
+    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
   }
 
   if (isGenreCatalogUrl(baseUrl) || isGenreCatalogId(catalogId)) {
-    const apiUrl = paginatableCatalogUrl(contentType, baseUrl)
-    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
+    return catalogViewKey(baseUrl, catalogId, { ...effective, genre: '' }, baseUrl)
   }
 
   return baseUrl

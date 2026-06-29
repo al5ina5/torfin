@@ -7,7 +7,7 @@ export const THEME_WINDOW_COLORS = {
 } as const
 
 export function loadThemeMode(): ThemeMode {
-  const stored = loadStoredString(STORAGE_KEYS.theme, 'system')
+  const stored = loadStoredString(STORAGE_KEYS.theme, 'dark')
   return stored === 'light' || stored === 'dark' ? stored : 'system'
 }
 
