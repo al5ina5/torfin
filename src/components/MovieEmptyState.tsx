@@ -1,4 +1,6 @@
+import { appRouteToUrl, browseRoute, withModal } from '../lib/app-routes'
 import { isLibraryCatalog } from '../lib/movies'
+import { AppLink } from './AppLink'
 
 type MovieEmptyStateProps = {
   catalogId?: string
@@ -38,22 +40,22 @@ export function MovieEmptyState({ catalogId, onClearFilters, onOpenSettings, onB
             </button>
           ) : null}
           {catalogId === 'watchlist' && onOpenSettings ? (
-            <button
-              type="button"
-              onClick={onOpenSettings}
+            <AppLink
+              href={appRouteToUrl(withModal(browseRoute('movie', 'trending'), { kind: 'settings', tab: 'general' }))}
+              onNavigate={onOpenSettings}
               className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
             >
               Open settings
-            </button>
+            </AppLink>
           ) : null}
           {(catalogId === 'continue' || catalogId === 'recent') && onBrowseTrending ? (
-            <button
-              type="button"
-              onClick={onBrowseTrending}
+            <AppLink
+              href={appRouteToUrl(browseRoute('movie', 'trending'))}
+              onNavigate={onBrowseTrending}
               className="h-8 rounded-md bg-[var(--mac-accent)] px-3 text-[12px] font-semibold text-white transition hover:opacity-90"
             >
               Browse trending
-            </button>
+            </AppLink>
           ) : null}
         </div>
       </div>

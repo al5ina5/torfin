@@ -50,6 +50,7 @@ export function ConfirmationDialog({
           aria-modal="true"
           aria-labelledby="confirm-dialog-title"
           aria-describedby="confirm-dialog-message"
+          data-focus-zone="modal"
           className={`app-confirm-sheet ${visible ? 'is-open' : ''}`}
           onClick={(event) => event.stopPropagation()}
           {...swipeDismiss}
@@ -87,6 +88,7 @@ export function ConfirmationDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
+        data-focus-zone="modal"
         className="mac-elevated w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-xl border"
         onClick={(event) => event.stopPropagation()}
       >

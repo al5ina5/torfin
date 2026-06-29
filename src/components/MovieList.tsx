@@ -1,10 +1,13 @@
 import { Heart, Loader2 } from 'lucide-react'
 
+import { appRouteToUrl, titleRoute } from '../lib/app-routes'
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
 import { jellyfinLibraryKey } from '../lib/jellyfin-library'
 import type { JellyfinLibraryMatch, Movie, PlaybackProgress } from '../types'
+import { AppLink } from './AppLink'
 import { MovieEmptyState } from './MovieEmptyState'
 import { MoviePoster } from './MoviePoster'
+import { FocusZone } from './FocusZone'
 
 type MovieListProps = {
   movies: Movie[]
@@ -106,8 +109,9 @@ export function MovieList({
   const showLoadMore = !shouldRemoteSearch && hasMoreMovies && !loading
 
   return (
-    <div
+    <FocusZone
       ref={scrollRef}
+      zone="catalog"
       className={`app-movie-scroll @container min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded-sm${showEmpty ? ' flex flex-col' : ''}`}
       {...pullRefreshHandlers}
     >
@@ -139,9 +143,9 @@ export function MovieList({
                 }`}
                 style={{ animationDelay: `${Math.min(index, 20) * 10}ms` }}
               >
-                <button
-                  type="button"
-                  onClick={() => onSelectMovie(movie)}
+                <AppLink
+                  href={appRouteToUrl(titleRoute(movie))}
+                  onNavigate={() => onSelectMovie(movie)}
                   className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left"
                 >
                   <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded border border-[var(--mac-border)] bg-[var(--mac-control)]">
@@ -161,7 +165,7 @@ export function MovieList({
                       </div>
                     ) : null}
                   </div>
-                </button>
+                </AppLink>
                 {onToggleWatchlist ? (
                   <button
                     type="button"
@@ -196,6 +200,6 @@ export function MovieList({
           onBrowseTrending={onBrowseTrending}
         />
       ) : null}
-    </div>
+    </FocusZone>
   )
 }

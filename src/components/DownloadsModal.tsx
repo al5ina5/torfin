@@ -1,7 +1,7 @@
 import { HardDriveDownload, Loader2, Pause, Play } from 'lucide-react'
 
 import { liveMetricsForJob, useLiveDownloadMetrics } from '../hooks/useLiveDownloadMetrics'
-import { bytesLabel, downloadStatusLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
+import { bytesLabel, downloadStatusLabel, etaLabel, isDownloadJobDownloading, isDownloadJobPaused, sortDownloadJobs } from '../lib/downloads'
 import { downloadEpisodeLabel } from '../lib/download-groups'
 import type { DownloadJob, DownloadSort } from '../types'
 import { AppModal } from './AppModal'
@@ -38,7 +38,7 @@ export function DownloadsModal({
 }: DownloadsModalProps) {
   const liveMetrics = useLiveDownloadMetrics(jobs)
   const sortedJobs = sortDownloadJobs(jobs, sort)
-  const activeJobs = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused).length
+  const activeJobs = jobs.filter(isDownloadJobDownloading).length
   const sortLabel = {
     newest: 'Newest first',
     oldest: 'Oldest first',
@@ -117,8 +117,8 @@ export function DownloadsModal({
               const displaySpeed = live?.speed ?? status?.speed ?? 0
               const displayEta = live?.eta ?? status?.eta ?? -1
               const displayDownloaded = live?.downloaded ?? status?.downloaded ?? 0
-              const isActive = isActiveDownloadJob(job) && !job.paused && status?.state !== 'paused'
-              const isPaused = Boolean((job.paused || status?.state === 'paused') && isActiveDownloadJob(job))
+              const isActive = isDownloadJobDownloading(job)
+              const isPaused = isDownloadJobPaused(job)
               const isStalled = status?.state === 'stalled'
               const title = status?.name ?? job.stream.title
               const episodeLabel = downloadEpisodeLabel(job)

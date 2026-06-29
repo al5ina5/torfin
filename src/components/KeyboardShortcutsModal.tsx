@@ -3,12 +3,14 @@ import { Keyboard } from 'lucide-react'
 import { AppModal } from './AppModal'
 
 const shortcuts = [
+  { keys: ['←', '→', '↑', '↓'], label: 'Navigate within the active panel' },
+  { keys: ['Enter', 'Space'], label: 'Activate focused control' },
+  { keys: ['Esc'], label: 'Close modal, drawer, or inspector' },
+  { keys: ['Backspace'], label: 'Return focus to the catalog' },
   { keys: ['⌘', 'K'], label: 'Focus search' },
   { keys: ['⌘', 'F'], label: 'Focus search' },
   { keys: ['⌘', ','], label: 'Open settings' },
-  { keys: ['Enter'], label: 'Play top stream result' },
-  { keys: ['Esc'], label: 'Close modal or inspector' },
-  { keys: ['←', '→', '↑', '↓'], label: 'Navigate catalog' },
+  { keys: ['Enter'], label: 'Open title or play top stream in inspector' },
   { keys: ['?'], label: 'Show keyboard shortcuts' },
 ]
 

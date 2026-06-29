@@ -17,6 +17,7 @@ import {
   verifyJellyfinImport,
   waitForJellyfinImport as waitForJellyfinImportFromModule,
 } from './server/jellyfin.mjs'
+import { createErrorLogger } from './server/error-log.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -41,6 +42,8 @@ const jobsFile = join(dataDir, 'downloads.json')
 const serverLogFile = join(dataDir, 'server.log')
 const downloadLogDir = join(dataDir, 'logs')
 const jsonCacheDir = join(dataDir, 'json-cache')
+const { errorsLogFile, logError, installProcessHandlers } = createErrorLogger(dataDir)
+installProcessHandlers()
 
 function defaultDownloadRoot() {
   if (process.env.TORBOX_DOWNLOAD_DIR) return process.env.TORBOX_DOWNLOAD_DIR
@@ -1368,7 +1371,28 @@ async function handleApi(request, response, pathname) {
       wget: commandExists('wget'),
       ffmpeg: isFfmpegAvailable(),
       downloadDir: defaultDownloadDir,
+      errorsLog: errorsLogFile,
     })
+    return
+  }
+  if (pathname === '/api/client-errors' && request.method === 'POST') {
+    const report = body?.message ? body : {}
+    if (!report.message) {
+      sendError(response, 400, 'message is required')
+      return
+    }
+    logError('client', {
+      message: report.message,
+      name: report.name || 'Error',
+      stack: report.stack || '',
+    }, {
+      kind: report.kind || 'client',
+      url: report.url || '',
+      userAgent: report.userAgent || String(request.headers['user-agent'] || ''),
+      componentStack: report.componentStack || '',
+      context: report.context || {},
+    })
+    sendJson(response, 204, {})
     return
   }
   if (pathname === '/api/fetch-json' && request.method === 'GET') {
@@ -1546,6 +1570,11 @@ const server = createServer((request, response) => {
         method: request.method,
         path: url.pathname,
         error: error.message || String(error),
+      })
+      logError('server', error, {
+        kind: 'api',
+        method: request.method,
+        path: url.pathname,
       })
       sendError(response, 500, error.message || String(error))
     })

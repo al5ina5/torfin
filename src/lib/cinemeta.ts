@@ -55,6 +55,18 @@ export function catalogPageUrl(url: string, skip: number) {
   return url.replace('.json', `/skip=${skip}.json`)
 }
 
+/** Cinemeta only paginates plain top/imdbRating catalogs; genre and year paths 404 on skip. */
+export function catalogSupportsPagination(url: string) {
+  const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/\?.*$/, '')
+  if (/\/genre=/.test(path)) return false
+  return /\/catalog\/(?:movie|series)\/(?:top|imdbRating)(?:\/skip=\d+)?\.json$/.test(path)
+}
+
+export function isCatalogEndError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /\b404\b/i.test(message) || /not found/i.test(message)
+}
+
 export function normalizeMovie(movie: CinemetaMovie): Movie | null {
   const id = movie.id || movie.imdb_id
   if (!id?.startsWith('tt')) return null

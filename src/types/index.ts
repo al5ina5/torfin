@@ -133,6 +133,8 @@ export type FilterPreset = {
   id: string
   name: string
   builtIn?: boolean
+  /** URL slug for custom presets; built-ins derive from id. */
+  slug?: string
   filters: MovieFilters
 }
 

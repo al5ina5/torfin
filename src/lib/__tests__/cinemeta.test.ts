@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { catalogPageUrl, normalizeMovie, normalizeSeriesEpisodes } from '../cinemeta'
+import { catalogPageUrl, catalogSupportsPagination, isCatalogEndError, normalizeMovie, normalizeSeriesEpisodes } from '../cinemeta'
 
 describe('catalogPageUrl', () => {
   it('keeps base url when skip is zero or negative', () => {
@@ -13,6 +13,27 @@ describe('catalogPageUrl', () => {
     expect(catalogPageUrl('https://v3-cinemeta.strem.io/catalog/movie/top.json', 50)).toBe(
       'https://v3-cinemeta.strem.io/catalog/movie/top/skip=50.json',
     )
+  })
+})
+
+describe('catalogSupportsPagination', () => {
+  it('allows top and imdbRating catalogs', () => {
+    expect(catalogSupportsPagination('https://v3-cinemeta.strem.io/catalog/movie/top.json')).toBe(true)
+    expect(catalogSupportsPagination('https://v3-cinemeta.strem.io/catalog/movie/top/skip=50.json')).toBe(true)
+    expect(catalogSupportsPagination('https://v3-cinemeta.strem.io/catalog/movie/imdbRating.json')).toBe(true)
+  })
+
+  it('disallows genre and year catalogs that 404 on skip', () => {
+    expect(catalogSupportsPagination('https://v3-cinemeta.strem.io/catalog/movie/top/genre=Horror.json')).toBe(false)
+    expect(catalogSupportsPagination('https://v3-cinemeta.strem.io/catalog/movie/year/genre=1995.json')).toBe(false)
+  })
+})
+
+describe('isCatalogEndError', () => {
+  it('detects pagination end responses', () => {
+    expect(isCatalogEndError(new Error('404 Not Found'))).toBe(true)
+    expect(isCatalogEndError('not found')).toBe(true)
+    expect(isCatalogEndError(new Error('Request timed out'))).toBe(false)
   })
 })
 

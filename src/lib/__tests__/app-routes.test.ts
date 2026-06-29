@@ -5,6 +5,7 @@ import {
   browseRoute,
   parseAppRoute,
   parseAppRouteFromUrl,
+  presetRoute,
   searchRoute,
   titleRoute,
   withoutModal,
@@ -76,6 +77,19 @@ describe('parseAppRoute', () => {
     })
   })
 
+  it('parses preset routes', () => {
+    expect(parseAppRoute('/movies/preset/top-horror')).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      presetId: 'top-horror',
+    })
+    expect(parseAppRoute('/series/preset/90s-classics')).toEqual({
+      contentType: 'series',
+      catalogId: 'trending',
+      presetId: '90s-classics',
+    })
+  })
+
   it('parses title routes', () => {
     expect(parseAppRoute('/movie/tt0111161')).toEqual({
       contentType: 'movie',
@@ -114,6 +128,8 @@ describe('appRouteToUrl', () => {
       browseRoute('movie', 'action'),
       browseRoute('series', 'horror'),
       browseRoute('movie', 'watchlist'),
+      presetRoute('movie', 'top-horror'),
+      presetRoute('series', '90s-classics'),
       searchRoute('movie', 'inception'),
       titleRoute({ type: 'movie', id: 'tt1375666' }),
       titleRoute({ type: 'series', id: 'tt0944947' }, undefined, 2, 3),
@@ -121,6 +137,19 @@ describe('appRouteToUrl', () => {
     for (const route of routes) {
       expect(parseAppRouteFromUrl(appRouteToUrl(route))).toEqual(route)
     }
+  })
+
+  it('clears preset context when browsing or searching', () => {
+    const preset = presetRoute('movie', 'top-horror')
+    expect(browseRoute('movie', 'action', preset)).toEqual({
+      contentType: 'movie',
+      catalogId: 'action',
+    })
+    expect(searchRoute('movie', 'matrix', preset)).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      searchQuery: 'matrix',
+    })
   })
 
   it('preserves browse context in helpers', () => {

@@ -62,17 +62,43 @@ export function movieRating(movie: Movie) {
   return Number.isFinite(rating) ? rating : Number.NaN
 }
 
+function yearCatalogUrl(catalogRoot: 'movie' | 'series', year: number) {
+  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/year/genre=${encodeURIComponent(String(year))}.json`
+}
+
+function representativeYearForRange(filters: MovieFilters) {
+  const from = filters.yearFrom ? Number(filters.yearFrom) : Number.NaN
+  const to = filters.yearTo ? Number(filters.yearTo) : Number.NaN
+  if (Number.isFinite(from) && Number.isFinite(to)) {
+    if (filters.sortBy === 'yearAsc') return from
+    if (filters.sortBy === 'yearDesc') return to
+    return Math.round((from + to) / 2)
+  }
+  if (Number.isFinite(from)) {
+    return filters.sortBy === 'yearDesc' ? CURRENT_RELEASE_YEAR : from
+  }
+  if (Number.isFinite(to)) return to
+  return CURRENT_RELEASE_YEAR
+}
+
 export function catalogUrlWithFilters(baseUrl: string, filters: MovieFilters, contentType: ContentType) {
   const catalogRoot = contentType === 'series' ? 'series' : 'movie'
   if (filters.apiCatalog === 'year' || filters.releaseYear) {
     const year = filters.releaseYear || String(CURRENT_RELEASE_YEAR)
-    return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/year/genre=${encodeURIComponent(year)}.json`
+    return yearCatalogUrl(catalogRoot, Number(year))
   }
 
   const apiCatalog = filters.apiCatalog || (filters.genre ? 'top' : '')
-  if (!apiCatalog) return baseUrl
-  const genrePath = filters.genre ? `/genre=${encodeURIComponent(filters.genre)}` : ''
-  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${apiCatalog}${genrePath}.json`
+  if (apiCatalog) {
+    const genrePath = filters.genre ? `/genre=${encodeURIComponent(filters.genre)}` : ''
+    return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${apiCatalog}${genrePath}.json`
+  }
+
+  if (filters.yearFrom || filters.yearTo) {
+    return yearCatalogUrl(catalogRoot, representativeYearForRange(filters))
+  }
+
+  return baseUrl
 }
 
 export function appendUniqueMovies(current: Movie[], incoming: Movie[]) {

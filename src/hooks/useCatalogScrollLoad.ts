@@ -22,20 +22,33 @@ export function useCatalogScrollLoad({
 
   useEffect(() => {
     if (!enabled) return
-    const root = scrollRef.current
-    const marker = loadMoreRef.current
-    if (!root || !marker) return
+    let observer: IntersectionObserver | null = null
+    let raf = 0
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void loadNextPageRef.current()
-        }
-      },
-      { root, rootMargin: '320px 0px' },
-    )
-    observer.observe(marker)
-    return () => observer.disconnect()
+    const attach = () => {
+      const root = scrollRef.current
+      const marker = loadMoreRef.current
+      if (!root || !marker) {
+        raf = window.requestAnimationFrame(attach)
+        return
+      }
+
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) {
+            void loadNextPageRef.current()
+          }
+        },
+        { root, rootMargin: '320px 0px' },
+      )
+      observer.observe(marker)
+    }
+
+    attach()
+    return () => {
+      window.cancelAnimationFrame(raf)
+      observer?.disconnect()
+    }
   }, [enabled, itemCount, layoutKey, loadMoreRef, scrollRef])
 
   useEffect(() => {

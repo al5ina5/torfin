@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 
 import type { DownloadJob, DownloadStatus } from '../types'
+import { isDownloadJobPaused } from '../lib/downloads'
 
 type UseDownloadPollingArgs = {
   enabled: boolean
@@ -11,15 +12,11 @@ type UseDownloadPollingArgs = {
 
 const POLL_INTERVAL_MS = 500
 
-function isJobPaused(job: DownloadJob) {
-  return Boolean(job.paused || job.status?.state === 'paused')
-}
-
 export function useDownloadPolling({ enabled, downloadJobs, setDownloadJobs }: UseDownloadPollingArgs) {
   const jobsRef = useRef<DownloadJob[]>([])
 
   useEffect(() => {
-    jobsRef.current = downloadJobs.filter((job) => job.status?.id && !job.status.complete && !isJobPaused(job))
+    jobsRef.current = downloadJobs.filter((job) => job.status?.id && !job.status.complete && !isDownloadJobPaused(job))
   }, [downloadJobs])
 
   useEffect(() => {

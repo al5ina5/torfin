@@ -1,11 +1,14 @@
 import { Heart, Loader2 } from 'lucide-react'
 
+import { appRouteToUrl, titleRoute } from '../lib/app-routes'
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
 import { jellyfinLibraryKey } from '../lib/jellyfin-library'
 import type { JellyfinLibraryMatch, Movie } from '../types'
+import { AppLink } from './AppLink'
 import { MovieEmptyState } from './MovieEmptyState'
 import { MovieGridSkeleton } from './MovieGridSkeleton'
 import { MoviePoster } from './MoviePoster'
+import { FocusZone } from './FocusZone'
 
 type MovieGridProps = {
   movies: Movie[]
@@ -63,8 +66,9 @@ export function MovieGrid({
   const showEmpty = !loading && !loadingMore && movies.length === 0
 
   return (
-    <div
+    <FocusZone
       ref={scrollRef}
+      zone="catalog"
       className={`app-movie-scroll min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded${showEmpty ? ' flex flex-col' : ''}`}
       {...pullRefreshHandlers}
     >
@@ -89,9 +93,9 @@ export function MovieGrid({
                 className="movie-item-enter group relative min-w-0"
                 style={{ animationDelay: `${Math.min(index, 28) * 16}ms` }}
               >
-                <button
-                  type="button"
-                  onClick={() => onSelectMovie(movie)}
+                <AppLink
+                  href={appRouteToUrl(titleRoute(movie))}
+                  onNavigate={() => onSelectMovie(movie)}
                   className="w-full rounded-lg text-left outline-none active:scale-[0.98] transition-transform duration-100"
                 >
                   <div
@@ -136,7 +140,7 @@ export function MovieGrid({
                       ) : null}
                     </div>
                   </div>
-                </button>
+                </AppLink>
                 {onToggleWatchlist ? (
                   <button
                     type="button"
@@ -176,6 +180,6 @@ export function MovieGrid({
           onBrowseTrending={onBrowseTrending}
         />
       ) : null}
-    </div>
+    </FocusZone>
   )
 }

@@ -90,14 +90,31 @@ export function saveCustomFilterPresets(presets: FilterPreset[]) {
   )
 }
 
-export function allFilterPresets() {
-  return [...builtInFilterPresets, ...loadCustomFilterPresets()]
+export function allFilterPresets(customPresets: FilterPreset[] = loadCustomFilterPresets()) {
+  return [...builtInFilterPresets, ...customPresets]
+}
+
+function slugifyPresetName(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'custom'
+}
+
+export function presetRouteSlug(preset: FilterPreset) {
+  if (preset.slug) return preset.slug
+  if (preset.builtIn) return preset.id.replace(/^builtin-/, '')
+  return preset.id.replace(/^custom-/, '')
+}
+
+export function findFilterPresetByRouteSlug(slug: string, customPresets: FilterPreset[] = loadCustomFilterPresets()) {
+  return allFilterPresets(customPresets).find((preset) => presetRouteSlug(preset) === slug)
 }
 
 export function createFilterPreset(name: string, filters: MovieFilters): FilterPreset {
+  const trimmed = name.trim() || 'Custom preset'
+  const stamp = Date.now().toString(36)
   return {
     id: `custom-${Date.now()}`,
-    name: name.trim() || 'Custom preset',
+    slug: `${slugifyPresetName(trimmed)}-${stamp}`,
+    name: trimmed,
     builtIn: false,
     filters: { ...filters },
   }

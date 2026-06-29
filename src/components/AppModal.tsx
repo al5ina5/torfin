@@ -50,7 +50,11 @@ export function AppModal({
 
   return (
     <div className={`app-modal-backdrop fixed inset-0 ${zClassName} bg-black/30 p-4 backdrop-blur-sm`} onClick={onClose}>
-      <section className={`mac-elevated flex flex-col overflow-hidden rounded-xl border ${className}`} onClick={(event) => event.stopPropagation()}>
+      <section
+        data-focus-zone="modal"
+        className={`mac-elevated flex flex-col overflow-hidden rounded-xl border ${className}`}
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="mac-toolbar shrink-0 border-b border-[var(--mac-divider,var(--mac-border))]">
           <div className="app-modal-titlebar">
             <button

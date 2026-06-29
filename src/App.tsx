@@ -3,6 +3,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
+import { FocusZone } from './components/FocusZone'
 import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { DownloadDestinationPicker } from './components/DownloadDestinationPicker'
 import { DownloadsModal } from './components/DownloadsModal'
@@ -27,13 +28,13 @@ import { useDownloadNotifications } from './hooks/useDownloadNotifications'
 import { loadServerDownloads, useDownloadPolling } from './hooks/useDownloadPolling'
 import { liveMetricsForJob, useLiveDownloadMetrics } from './hooks/useLiveDownloadMetrics'
 import { useJellyfinRefresh } from './hooks/useJellyfinRefresh'
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { useAppFocusNavigation } from './hooks/useAppFocusNavigation'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSecrets } from './hooks/useSecrets'
 import { getApi, isTauriRuntime, loadJson, postApi, resolveStreamUrl, setApiRequestTimeoutSeconds } from './lib/api'
-import { catalogPageUrl, enrichMovieFromMeta, metaUrl, normalizeCatalogItem, normalizeSeriesEpisodes, similarMoviesFromMeta, searchUrl } from './lib/cinemeta'
+import { catalogPageUrl, catalogSupportsPagination, enrichMovieFromMeta, isCatalogEndError, metaUrl, normalizeCatalogItem, normalizeSeriesEpisodes, similarMoviesFromMeta, searchUrl } from './lib/cinemeta'
 import { allProfileOptions, builtinProfileList, findCustomProfile } from './lib/custom-profiles'
-import { createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
+import { createFilterPreset, findFilterPresetByRouteSlug, loadCustomFilterPresets, presetRouteSlug, saveCustomFilterPresets } from './lib/filter-presets'
 import {
   destinationToLegacyConfig,
   getDefaultDestination,
@@ -96,7 +97,6 @@ import type {
   StreamResult,
 } from './types'
 
-const catalogPageSize = 100
 
 const resultProfiles = builtinProfileList()
 
@@ -252,6 +252,7 @@ export default function App() {
     openFilters,
     setSettingsTab,
     navigateBrowse,
+    navigatePreset,
     navigateSearch,
     navigateToTitle,
     closeTitle,
@@ -284,7 +285,7 @@ export default function App() {
   const downloadSummary = useMemo(() => {
     const summary = downloadSidebarSummary(downloadJobs)
     const topProgress = downloadJobs
-      .filter((job) => isActiveDownloadJob(job) && !job.paused)
+      .filter((job) => isActiveDownloadJob(job))
       .reduce((max, job) => Math.max(max, liveMetricsForJob(job, liveDownloadMetrics)?.progress ?? job.status?.progress ?? 0), 0)
     return { ...summary, topProgress }
   }, [downloadJobs, liveDownloadMetrics])
@@ -405,7 +406,8 @@ export default function App() {
       window.location.pathname === '/' &&
       !urlRoute.title &&
       !urlRoute.modal &&
-      !urlRoute.searchQuery
+      !urlRoute.searchQuery &&
+      !urlRoute.presetId
 
     if (!isDefaultHome) return
     if (urlRoute.catalogId === initialBrowse.catalogId && urlRoute.contentType === initialBrowse.contentType) return
@@ -416,8 +418,21 @@ export default function App() {
   useEffect(() => {
     if (route.contentType !== contentType) setContentType(route.contentType)
     if (route.searchQuery !== undefined) return
+
+    if (route.presetId) {
+      const preset = findFilterPresetByRouteSlug(route.presetId, customFilterPresets)
+      if (preset) {
+        setMovieFilters({ ...preset.filters })
+      } else {
+        setMovieFilters(defaultMovieFilters)
+      }
+      if (catalogId !== 'trending') setCatalogId('trending')
+      if (query.trim()) setQuery('')
+      return
+    }
+
     if (route.catalogId !== catalogId) setCatalogId(route.catalogId)
-  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType])
+  }, [route.catalogId, route.contentType, route.presetId, route.searchQuery, catalogId, contentType, customFilterPresets, query])
 
   useEffect(() => {
     if (!route.title) {
@@ -522,8 +537,8 @@ export default function App() {
   useEffect(() => {
     if (isLibraryCatalog(catalogId) || catalogLoading || catalogValidating || !catalogData) return
     setMovies(catalogData)
-    setCatalogSkip(catalogPageSize)
-    setHasMoreMovies(catalogData.length >= catalogPageSize)
+    setCatalogSkip(catalogData.length)
+    setHasMoreMovies(catalogSupportsPagination(filteredCatalogUrl) && catalogData.length > 0)
     setMovieError('')
   }, [catalogData, catalogId, catalogLoading, catalogValidating])
 
@@ -649,13 +664,6 @@ export default function App() {
   ])
 
   useEffect(() => {
-    const modalOpen = filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || Boolean(confirmRemove)
-    const mobileOverlayOpen = !isDesktop && (sidebarOpen || Boolean(selectedMovie))
-    document.body.classList.toggle('modal-open', modalOpen || mobileOverlayOpen)
-    return () => document.body.classList.remove('modal-open')
-  }, [confirmRemove, downloadsOpen, filtersOpen, isDesktop, jellyfinSignInOpen, preferencesOpen, selectedMovie, sidebarOpen, torboxKeyPromptOpen])
-
-  useEffect(() => {
     if (isDesktop) setSidebarOpen(false)
   }, [isDesktop])
 
@@ -701,7 +709,13 @@ export default function App() {
 
   const libraryContentKey = `${contentType}:${catalogId}`
   const catalogContentKey = `${contentType}:${filteredCatalogUrl}`
-  const moviesContentKey = shouldRemoteSearch ? `${contentType}:search:${debouncedQuery}` : isLibraryCatalog(catalogId) ? libraryContentKey : catalogContentKey
+  const moviesContentKey = shouldRemoteSearch
+    ? `${contentType}:search:${debouncedQuery}`
+    : route.presetId
+      ? `${contentType}:preset:${route.presetId}`
+      : isLibraryCatalog(catalogId)
+        ? libraryContentKey
+        : catalogContentKey
   useEffect(() => {
     setFocusedMovieIndex(0)
   }, [moviesContentKey])
@@ -710,7 +724,19 @@ export default function App() {
     : shouldRemoteSearch
       ? (searchLoading || (searchValidating && !searchData?.length))
       : catalogLoading || catalogValidating || (!catalogError && !catalogData && !movies.length)
-  const movieErrorMessage = movieError || (catalogError instanceof Error ? catalogError.message : catalogError ? `Could not load ${contentLabelPlural.toLowerCase()}` : '')
+  const catalogFetchFailed =
+    !isLibraryCatalog(catalogId) &&
+    !shouldRemoteSearch &&
+    !catalogLoading &&
+    !catalogValidating &&
+    !movies.length &&
+    Boolean(catalogError)
+  const movieErrorMessage =
+    (catalogFetchFailed
+      ? catalogError instanceof Error
+        ? catalogError.message
+        : `Could not load ${contentLabelPlural.toLowerCase()}`
+      : '') || (movies.length === 0 ? movieError : '')
   const searchErrorMessage = searchError instanceof Error ? searchError.message : searchError ? 'Search failed' : ''
   const streamEmptyMessage = activePlugins.length === 0
     ? 'No stream sources are enabled. Open Settings and enable at least one source.'
@@ -737,8 +763,13 @@ export default function App() {
     if (patch.libraryViewMode) setFocusedMovieIndex(0)
   }
 
+  function clearPresetRoute() {
+    if (route.presetId) navigateBrowse(contentType, catalogId, true)
+  }
+
   function handleApplyFilterPreset(preset: FilterPreset) {
-    setMovieFilters({ ...preset.filters })
+    setQuery('')
+    navigatePreset(contentType, presetRouteSlug(preset))
   }
 
   function handleSaveFilterPreset(name: string) {
@@ -751,6 +782,7 @@ export default function App() {
   function handleClearSearchAndFilters() {
     setMovieFilters(defaultMovieFilters)
     setQuery('')
+    clearPresetRoute()
   }
 
   function handleExportSettings() {
@@ -802,10 +834,12 @@ export default function App() {
   }
 
   function handleContentTypeChange(next: ContentType) {
-    navigateBrowse(next, catalogId)
+    if (route.presetId) setMovieFilters(defaultMovieFilters)
+    navigateBrowse(next, route.presetId ? 'trending' : catalogId)
   }
 
   function handleCatalogChange(nextCatalogId: string) {
+    if (route.presetId) setMovieFilters(defaultMovieFilters)
     navigateBrowse(contentType, nextCatalogId)
   }
 
@@ -1506,8 +1540,8 @@ export default function App() {
     }
   }
 
-  useKeyboardShortcuts({
-    modalOpen: filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || shortcutsOpen || Boolean(confirmRemove),
+  useAppFocusNavigation({
+    isDesktop,
     displayedMovies,
     focusedMovieIndex,
     setFocusedMovieIndex,
@@ -1520,12 +1554,29 @@ export default function App() {
     onPlayTopStream: () => {
       if (compactStreams[0]) void playStream(compactStreams[0], 0)
     },
-    onCloseModals: () => {
+    onDismissOverlay: () => {
       if (torboxKeyPromptOpen) {
         setTorboxKeyPromptOpen(false)
         return
       }
-      if (filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || confirmRemove || shortcutsOpen) {
+      if (firstRunOpen) {
+        setFirstRunOpen(false)
+        return
+      }
+      if (destinationPickerOpen) {
+        setDestinationPickerOpen(false)
+        setPendingDownload(null)
+        setDownloadingStreamKey('')
+        return
+      }
+      if (
+        filtersOpen ||
+        downloadsOpen ||
+        preferencesOpen ||
+        jellyfinSignInOpen ||
+        confirmRemove ||
+        shortcutsOpen
+      ) {
         setJellyfinSignInOpen(false)
         setConfirmRemove(null)
         setShortcutsOpen(false)
@@ -1544,17 +1595,21 @@ export default function App() {
   })
 
   const loadNextPage = useCallback(async () => {
-    if (shouldRemoteSearch || loadingMoreMovies || !hasMoreMovies || catalogError || catalogSkip < catalogPageSize) return
+    if (shouldRemoteSearch || loadingMoreMovies || !hasMoreMovies || catalogError || catalogSkip <= 0) return
     setLoadingMoreMovies(true)
     try {
       const body = await loadJson<{ metas?: unknown[] }>(catalogPageUrl(filteredCatalogUrl, catalogSkip))
       const incoming = (body.metas || []).map((item) => normalizeCatalogItem(item as never, contentType)).filter(Boolean) as Movie[]
       setMovies((current) => appendUniqueMovies(current, incoming))
-      setCatalogSkip((current) => current + catalogPageSize)
+      setCatalogSkip((current) => current + incoming.length)
       setHasMoreMovies(incoming.length > 0)
       setMovieError('')
     } catch (error) {
-      setMovieError(error instanceof Error ? error.message : 'Could not load more movies')
+      if (isCatalogEndError(error)) {
+        setHasMoreMovies(false)
+      } else {
+        setMovieError(error instanceof Error ? error.message : 'Could not load more movies')
+      }
     } finally {
       setLoadingMoreMovies(false)
     }
@@ -1564,7 +1619,7 @@ export default function App() {
     scrollRef: moviePanelScrollRef,
     loadMoreRef,
     loadNextPage,
-    enabled: !shouldRemoteSearch && hasMoreMovies && !moviesLoading && !loadingMoreMovies && !catalogError && catalogSkip >= catalogPageSize,
+    enabled: !shouldRemoteSearch && hasMoreMovies && !moviesLoading && !loadingMoreMovies && !catalogError && catalogSkip > 0,
     itemCount: displayedMovies.length,
     layoutKey: preferences.libraryViewMode,
   })
@@ -1618,6 +1673,7 @@ export default function App() {
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
             customFilterPresets={customFilterPresets}
+            activePresetId={route.presetId}
             movieFilters={movieFilters}
             onApplyFilterPreset={handleApplyFilterPreset}
           />
@@ -1642,6 +1698,7 @@ export default function App() {
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
             customFilterPresets={customFilterPresets}
+            activePresetId={route.presetId}
             movieFilters={movieFilters}
             onApplyFilterPreset={handleApplyFilterPreset}
           />
@@ -1650,13 +1707,17 @@ export default function App() {
         <button
           type="button"
           className="app-splitter app-splitter-left"
+          data-focus-ignore
           onPointerDown={(event) => startSidebarResize('left', event)}
           aria-label="Resize library sidebar"
           aria-orientation="vertical"
         />
 
         <section className="relative flex min-h-0 min-w-0 flex-col">
-          <header className="mac-toolbar app-mobile-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4">
+          <FocusZone
+            zone="toolbar"
+            className="mac-toolbar app-mobile-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4"
+          >
             {!isDesktop ? (
               <button
                 type="button"
@@ -1738,7 +1799,7 @@ export default function App() {
             >
               <SlidersHorizontal size={16} />
             </button>
-          </header>
+          </FocusZone>
 
           {!isDesktop && (pullDistance > 0 || catalogRefreshing) ? (
             <div
@@ -1804,12 +1865,14 @@ export default function App() {
         <button
           type="button"
           className="app-splitter app-splitter-right max-lg:hidden"
+          data-focus-ignore
           onPointerDown={(event) => startSidebarResize('right', event)}
           aria-label="Resize movie details sidebar"
           aria-orientation="vertical"
         />
 
         <InspectorPanel
+          contentType={contentType}
           movie={inspectorMovie}
           inWatchlist={selectedMovie ? isInWatchlist(selectedMovie) : false}
           onToggleWatchlist={() => {
@@ -1875,8 +1938,14 @@ export default function App() {
           open={filtersOpen}
           filters={movieFilters}
           onClose={closeModal}
-          onChange={setMovieFilters}
-          onReset={() => setMovieFilters(defaultMovieFilters)}
+          onChange={(next) => {
+            setMovieFilters(next)
+            clearPresetRoute()
+          }}
+          onReset={() => {
+            setMovieFilters(defaultMovieFilters)
+            clearPresetRoute()
+          }}
           onSavePreset={handleSaveFilterPreset}
         />
         <DownloadsModal

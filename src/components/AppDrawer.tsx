@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 import { useAnimatedPresence } from '../hooks/useAnimatedPresence'
 import { useSwipeDismiss } from '../hooks/useSwipeDismiss'
+import type { FocusZone } from '../lib/app-focus-navigation'
 
 export type AppDrawerProps = {
   open: boolean
@@ -19,6 +20,7 @@ export type AppDrawerProps = {
   ariaLabel?: string
   titleId?: string
   role?: 'dialog' | 'alertdialog'
+  focusZone?: FocusZone
 }
 
 export function AppDrawer({
@@ -36,6 +38,7 @@ export function AppDrawer({
   ariaLabel,
   titleId = 'app-drawer-title',
   role = 'dialog',
+  focusZone = 'modal',
 }: AppDrawerProps) {
   const { mounted, visible } = useAnimatedPresence(open)
   const swipeDismiss = useSwipeDismiss(onClose, 'down')
@@ -54,6 +57,7 @@ export function AppDrawer({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-label={ariaLabel}
+        data-focus-zone={focusZone}
         className={`app-drawer-sheet ${surfaceClassName} ${visible ? 'is-open' : ''} ${sheetClassName}`.trim()}
         onClick={(event) => event.stopPropagation()}
       >

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { CINEMETA_CATALOG_URLS, CINEMETA_SERIES_CATALOG_URLS } from '../cinemeta'
-import { catalogOptions, effectiveMovieFilters, filterAndSortMovies } from '../movies'
+import { CINEMETA_CATALOG_URLS, CINEMETA_SERIES_CATALOG_URLS, CURRENT_RELEASE_YEAR } from '../cinemeta'
+import { builtInFilterPresets } from '../filter-presets'
+import { catalogOptions, catalogUrlWithFilters, effectiveMovieFilters, filterAndSortMovies } from '../movies'
 import type { Movie } from '../../types'
 
 describe('catalog URLs', () => {
@@ -26,6 +27,31 @@ describe('catalog URLs', () => {
     expect(CINEMETA_SERIES_CATALOG_URLS.trending).toContain('/catalog/series/top.json')
     expect(CINEMETA_SERIES_CATALOG_URLS.topRated).toContain('/catalog/series/imdbRating.json')
     expect(CINEMETA_SERIES_CATALOG_URLS.featured).toContain('/catalog/series/top.json')
+  })
+})
+
+describe('catalogUrlWithFilters', () => {
+  const trending = CINEMETA_CATALOG_URLS.trending
+
+  it('routes genre presets to the Cinemeta top genre catalog', () => {
+    const horror = builtInFilterPresets.find((preset) => preset.id === 'builtin-top-horror')!
+    expect(catalogUrlWithFilters(trending, horror.filters, 'movie')).toContain('/catalog/movie/top/genre=Horror.json')
+  })
+
+  it('routes decade presets to a representative year catalog', () => {
+    const nineties = builtInFilterPresets.find((preset) => preset.id === 'builtin-90s-classics')!
+    expect(catalogUrlWithFilters(trending, nineties.filters, 'movie')).toContain('/catalog/movie/year/genre=1995.json')
+
+    const newDecade = builtInFilterPresets.find((preset) => preset.id === 'builtin-new-this-decade')!
+    expect(catalogUrlWithFilters(trending, newDecade.filters, 'movie')).toContain(
+      `/catalog/movie/year/genre=${CURRENT_RELEASE_YEAR}.json`,
+    )
+  })
+
+  it('keeps the sidebar catalog when no preset overrides apply', () => {
+    expect(
+      catalogUrlWithFilters(trending, { apiCatalog: '', genre: '', releaseYear: '', yearFrom: '', yearTo: '', minRating: '', sortBy: 'catalog' }, 'movie'),
+    ).toBe(trending)
   })
 })
 

@@ -86,7 +86,6 @@ export function findSpatialCatalogNeighbor(
   if (!items.length) return currentIndex
 
   const knownIndexes = items.map((item) => item.index)
-  const maxIndex = Math.max(...knownIndexes)
   const safeIndex = knownIndexes.includes(currentIndex)
     ? currentIndex
     : knownIndexes.reduce((best, index) =>

@@ -16,6 +16,7 @@ export type AppRouteTitle = {
 export type AppRoute = {
   contentType: ContentType
   catalogId: string
+  presetId?: string
   searchQuery?: string
   title?: AppRouteTitle
   modal?: AppRouteModal
@@ -114,6 +115,12 @@ export function parseAppRoute(pathname: string, search = ''): AppRoute {
     return { contentType, catalogId: 'trending', searchQuery: query }
   }
 
+  const presetMatch = normalized.match(/^\/(movies|series)\/preset\/([a-zA-Z0-9-]+)$/)
+  if (presetMatch) {
+    const contentType: ContentType = presetMatch[1] === 'series' ? 'series' : 'movie'
+    return { contentType, catalogId: 'trending', presetId: presetMatch[2] }
+  }
+
   const browseMatch = normalized.match(/^\/(movies|series)(?:\/([a-zA-Z0-9]+))?$/)
   if (browseMatch) {
     const contentType: ContentType = browseMatch[1] === 'series' ? 'series' : 'movie'
@@ -160,6 +167,11 @@ export function appRouteToUrl(route: AppRoute): string {
     return `/${prefix}/search?q=${encodeURIComponent(route.searchQuery)}`
   }
 
+  if (route.presetId) {
+    const prefix = route.contentType === 'series' ? 'series' : 'movies'
+    return `/${prefix}/preset/${route.presetId}`
+  }
+
   const prefix = route.contentType === 'series' ? 'series' : 'movies'
   if (route.catalogId === 'trending') {
     if (route.contentType === 'movie' && route.catalogId === 'trending') return '/'
@@ -174,6 +186,10 @@ function normalizeAppRoute(value: unknown): AppRoute | null {
   const contentType = route.contentType === 'series' ? 'series' : 'movie'
   const catalogId = typeof route.catalogId === 'string' && isCatalogId(route.catalogId) ? route.catalogId : 'trending'
   const next: AppRoute = { contentType, catalogId }
+
+  if (typeof route.presetId === 'string' && route.presetId) {
+    next.presetId = route.presetId
+  }
 
   if (typeof route.searchQuery === 'string') {
     next.searchQuery = route.searchQuery
@@ -216,7 +232,7 @@ export function readAppRoute(): AppRoute {
     }
   }
 
-  if (fromUrl.title || fromUrl.searchQuery || fromUrl.catalogId !== 'trending' || fromUrl.contentType !== 'movie') {
+  if (fromUrl.title || fromUrl.searchQuery || fromUrl.presetId || fromUrl.catalogId !== 'trending' || fromUrl.contentType !== 'movie') {
     return fromUrl
   }
 
@@ -248,16 +264,32 @@ export function writeAppRoute(route: AppRoute, replace = false) {
 
 export function browseRoute(contentType: ContentType, catalogId: string, current?: AppRoute): AppRoute {
   const base = current ?? defaultAppRoute(contentType)
+  const { presetId: _presetId, title: _title, searchQuery: _searchQuery, ...rest } = base
   return {
+    ...rest,
     contentType,
     catalogId,
     modal: base.modal,
   }
 }
 
+export function presetRoute(contentType: ContentType, presetId: string, current?: AppRoute): AppRoute {
+  const base = current ?? defaultAppRoute(contentType)
+  const { title: _title, searchQuery: _searchQuery, ...rest } = base
+  return {
+    ...rest,
+    contentType,
+    catalogId: 'trending',
+    presetId,
+    modal: base.modal,
+  }
+}
+
 export function searchRoute(contentType: ContentType, query: string, current?: AppRoute): AppRoute {
   const base = current ?? defaultAppRoute(contentType)
+  const { presetId: _presetId, title: _title, ...rest } = base
   return {
+    ...rest,
     contentType,
     catalogId: base.catalogId,
     searchQuery: query,
@@ -280,6 +312,7 @@ export function titleRoute(
   return {
     contentType: base.contentType,
     catalogId: base.catalogId,
+    presetId: base.presetId,
     searchQuery: base.searchQuery,
     title,
     modal: base.modal,

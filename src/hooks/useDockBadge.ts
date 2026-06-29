@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
 
 import { setDockBadge } from '../lib/dock-badge'
-import { isActiveDownloadJob } from '../lib/downloads'
+import { isDownloadJobDownloading } from '../lib/downloads'
 import type { DownloadJob } from '../types'
 
 export function useDockBadge(jobs: DownloadJob[]) {
   useEffect(() => {
-    const activeCount = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused).length
+    const activeCount = jobs.filter(isDownloadJobDownloading).length
     void setDockBadge(activeCount)
   }, [jobs])
 }

@@ -1,13 +1,16 @@
 import { Download, ExternalLink, Heart, Loader2 } from 'lucide-react'
 
-import type { JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
+import { appRouteToUrl, searchRoute, titleRoute } from '../lib/app-routes'
+import type { ContentType, JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
 import { AppDrawer } from './AppDrawer'
+import { AppLink } from './AppLink'
 import { StreamResults } from './StreamResults'
 import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
 import { NativePlaybackBanner } from './NativePlaybackBanner'
 import { VideoPlayer } from './VideoPlayer'
 
 type InspectorPanelProps = {
+  contentType: ContentType
   movie: Movie | null
   inWatchlist: boolean
   onToggleWatchlist: () => void
@@ -69,6 +72,7 @@ type InspectorPanelProps = {
 type InspectorContentProps = Omit<InspectorPanelProps, 'mobileOpen' | 'onMobileClose'>
 
 function InspectorContent({
+  contentType,
   movie,
   inWatchlist,
   onToggleWatchlist,
@@ -223,9 +227,13 @@ function InspectorContent({
               <span key={name}>
                 {index > 0 ? ', ' : ''}
                 {onSearchPerson ? (
-                  <button type="button" onClick={() => onSearchPerson(name)} className="font-medium text-[var(--mac-accent)] hover:underline">
+                  <AppLink
+                    href={appRouteToUrl(searchRoute(contentType, name))}
+                    onNavigate={() => onSearchPerson(name)}
+                    className="font-medium text-[var(--mac-accent)] hover:underline"
+                  >
                     {name}
-                  </button>
+                  </AppLink>
                 ) : (
                   name
                 )}
@@ -241,9 +249,13 @@ function InspectorContent({
               <span key={name}>
                 {index > 0 ? ', ' : ''}
                 {onSearchPerson ? (
-                  <button type="button" onClick={() => onSearchPerson(name)} className="font-medium text-[var(--mac-accent)] hover:underline">
+                  <AppLink
+                    href={appRouteToUrl(searchRoute(contentType, name))}
+                    onNavigate={() => onSearchPerson(name)}
+                    className="font-medium text-[var(--mac-accent)] hover:underline"
+                  >
                     {name}
-                  </button>
+                  </AppLink>
                 ) : (
                   name
                 )}
@@ -269,17 +281,17 @@ function InspectorContent({
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">Similar</h3>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {similarMovies.map((entry) => (
-                <button
+                <AppLink
                   key={entry.id}
-                  type="button"
-                  onClick={() => onSelectSimilar(entry)}
+                  href={appRouteToUrl(titleRoute(entry))}
+                  onNavigate={() => onSelectSimilar(entry)}
                   className="w-16 shrink-0 text-left"
                 >
                   <div className="aspect-[2/3] overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]">
                     {entry.poster ? <img src={entry.poster} alt="" className="h-full w-full object-cover" /> : null}
                   </div>
                   <div className="mt-1 line-clamp-2 text-[10px] leading-3">{entry.name}</div>
-                </button>
+                </AppLink>
               ))}
             </div>
           </div>
@@ -417,7 +429,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="app-sidebar-desktop mac-sidebar hidden min-h-0 flex-col lg:flex">
+      <aside className="app-sidebar-desktop mac-sidebar hidden min-h-0 flex-col lg:flex" data-focus-zone="inspector">
         {!movie ? (
           <div className="grid h-full min-h-96 place-items-center p-6 text-center text-[13px] text-[var(--mac-secondary)]">
             Pick a title to inspect streams.
@@ -439,6 +451,7 @@ export function InspectorPanel(props: InspectorPanelProps) {
           bodyClassName="p-0"
           ariaLabel={movie.name}
           titleId="app-inspector-title"
+          focusZone="inspector"
         >
           <InspectorContent movie={movie} {...contentProps} />
         </AppDrawer>

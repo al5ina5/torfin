@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   appRouteToUrl,
   browseRoute,
+  presetRoute,
   readAppRoute,
   searchRoute,
   titleRoute,
@@ -54,6 +55,12 @@ export function useAppModalRoute() {
     [navigate],
   )
 
+  const navigatePreset = useCallback(
+    (contentType: ContentType, presetId: string, replace = false) =>
+      navigate((current) => presetRoute(contentType, presetId, withoutTitle(current)), replace),
+    [navigate],
+  )
+
   const navigateSearch = useCallback(
     (contentType: ContentType, query: string, replace = false) => {
       navigate((current) => {
@@ -83,6 +90,7 @@ export function useAppModalRoute() {
     openFilters,
     setSettingsTab,
     navigateBrowse,
+    navigatePreset,
     navigateSearch,
     navigateToTitle,
     closeTitle,

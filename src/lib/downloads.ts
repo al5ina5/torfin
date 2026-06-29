@@ -35,6 +35,36 @@ export function isActiveDownloadJob(job: DownloadJob) {
   return Boolean(job.status && !job.status.complete && !job.status.state.startsWith('error:'))
 }
 
+export function isDownloadJobPaused(job: DownloadJob) {
+  return Boolean((job.paused || job.status?.state === 'paused') && isActiveDownloadJob(job))
+}
+
+export function isDownloadJobStalled(job: DownloadJob) {
+  return Boolean(isActiveDownloadJob(job) && !isDownloadJobPaused(job) && job.status?.state === 'stalled')
+}
+
+export function isDownloadJobQueued(job: DownloadJob) {
+  const state = job.status?.state
+  return Boolean(
+    isActiveDownloadJob(job) &&
+      !isDownloadJobPaused(job) &&
+      (state === 'queued' || state === 'waiting'),
+  )
+}
+
+export function isDownloadJobResolving(job: DownloadJob) {
+  return Boolean(!job.status && !job.error)
+}
+
+export function isDownloadJobDownloading(job: DownloadJob) {
+  return Boolean(
+    isActiveDownloadJob(job) &&
+      !isDownloadJobPaused(job) &&
+      !isDownloadJobStalled(job) &&
+      !isDownloadJobQueued(job),
+  )
+}
+
 export function isFinishedDownloadJob(job: DownloadJob) {
   return Boolean(job.status?.complete || job.status?.state.startsWith('error:') || job.error)
 }
@@ -51,7 +81,7 @@ export function jellyfinSyncConfigured(job: DownloadJob) {
 export function downloadStatusLabel(job: DownloadJob) {
   const status = job.status
   if (!status) return job.error ? 'failed' : 'queued'
-  if ((job.paused || status.state === 'paused') && isActiveDownloadJob(job)) return 'paused'
+  if (isDownloadJobPaused(job)) return 'paused'
   if (status.state.startsWith('error:')) return 'failed'
   if (status.state === 'stalled') return 'stalled'
   if (!status.complete) {
@@ -287,11 +317,49 @@ export function bytesLabel(bytes: number) {
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`
 }
 
-export function downloadSidebarSummary(jobs: DownloadJob[]) {
-  const active = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused)
-  const topProgress = active.reduce((max, job) => Math.max(max, job.status?.progress ?? 0), 0)
-  const resolving = jobs.filter((job) => !job.status && !job.error).length
-  return { activeCount: active.length, topProgress, resolvingCount: resolving }
+export type DownloadSidebarPhase = 'idle' | 'starting' | 'queued' | 'downloading' | 'paused' | 'stalled'
+
+export type DownloadSidebarSummary = {
+  phase: DownloadSidebarPhase
+  inProgressCount: number
+  downloadingCount: number
+  pausedCount: number
+  stalledCount: number
+  queuedCount: number
+  resolvingCount: number
+  topProgress: number
+  /** @deprecated Use downloadingCount */
+  activeCount: number
+}
+
+export function downloadSidebarSummary(jobs: DownloadJob[]): DownloadSidebarSummary {
+  const resolving = jobs.filter(isDownloadJobResolving)
+  const downloading = jobs.filter(isDownloadJobDownloading)
+  const paused = jobs.filter(isDownloadJobPaused)
+  const stalled = jobs.filter(isDownloadJobStalled)
+  const queued = jobs.filter(isDownloadJobQueued)
+  const inProgressCount = resolving.length + downloading.length + paused.length + stalled.length + queued.length
+  const progressJobs = [...downloading, ...paused, ...stalled, ...queued]
+  const topProgress = progressJobs.reduce((max, job) => Math.max(max, job.status?.progress ?? 0), 0)
+
+  let phase: DownloadSidebarPhase = 'idle'
+  if (downloading.length > 0) phase = 'downloading'
+  else if (stalled.length > 0) phase = 'stalled'
+  else if (resolving.length > 0) phase = 'starting'
+  else if (queued.length > 0) phase = 'queued'
+  else if (paused.length > 0) phase = 'paused'
+
+  return {
+    phase,
+    inProgressCount,
+    downloadingCount: downloading.length,
+    pausedCount: paused.length,
+    stalledCount: stalled.length,
+    queuedCount: queued.length,
+    resolvingCount: resolving.length,
+    topProgress,
+    activeCount: downloading.length,
+  }
 }
 
 export function etaLabel(seconds: number) {

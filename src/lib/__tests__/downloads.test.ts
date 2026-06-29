@@ -10,6 +10,11 @@ import {
   downloadStatusLabel,
   etaLabel,
   isActiveDownloadJob,
+  isDownloadJobDownloading,
+  isDownloadJobPaused,
+  isDownloadJobQueued,
+  isDownloadJobResolving,
+  isDownloadJobStalled,
   isFinishedDownloadJob,
   isJellyfinImportConfirmed,
   jellyfinSyncConfigured,
@@ -223,6 +228,26 @@ describe('etaLabel', () => {
   })
 })
 
+describe('download job state helpers', () => {
+  it('detects paused jobs from flag or status state', () => {
+    expect(isDownloadJobPaused(makeJob({ paused: true, status: makeStatus() }))).toBe(true)
+    expect(isDownloadJobPaused(makeJob({ status: makeStatus({ state: 'paused' }) }))).toBe(true)
+    expect(isDownloadJobDownloading(makeJob({ status: makeStatus({ state: 'paused' }) }))).toBe(false)
+  })
+
+  it('detects stalled and queued jobs', () => {
+    expect(isDownloadJobStalled(makeJob({ status: makeStatus({ state: 'stalled' }) }))).toBe(true)
+    expect(isDownloadJobQueued(makeJob({ status: makeStatus({ state: 'queued' }) }))).toBe(true)
+    expect(isDownloadJobQueued(makeJob({ status: makeStatus({ state: 'waiting' }) }))).toBe(true)
+    expect(isDownloadJobDownloading(makeJob({ status: makeStatus({ state: 'queued' }) }))).toBe(false)
+  })
+
+  it('detects resolving jobs', () => {
+    expect(isDownloadJobResolving(makeJob({ pendingId: 'p' }))).toBe(true)
+    expect(isDownloadJobResolving(makeJob({ error: 'x' }))).toBe(false)
+  })
+})
+
 describe('downloadSidebarSummary', () => {
   it('counts active and resolving jobs', () => {
     const jobs = [
@@ -231,8 +256,39 @@ describe('downloadSidebarSummary', () => {
       makeJob({ status: makeStatus({ complete: true, id: 'done' }) }),
     ]
     const summary = downloadSidebarSummary(jobs)
+    expect(summary.downloadingCount).toBe(1)
     expect(summary.activeCount).toBe(1)
     expect(summary.topProgress).toBe(40)
     expect(summary.resolvingCount).toBe(1)
+    expect(summary.inProgressCount).toBe(2)
+    expect(summary.phase).toBe('downloading')
+  })
+
+  it('reports paused phase when only paused jobs remain', () => {
+    const summary = downloadSidebarSummary([
+      makeJob({ status: makeStatus({ state: 'paused', progress: 55 }) }),
+    ])
+    expect(summary.phase).toBe('paused')
+    expect(summary.pausedCount).toBe(1)
+    expect(summary.downloadingCount).toBe(0)
+    expect(summary.inProgressCount).toBe(1)
+    expect(summary.topProgress).toBe(55)
+  })
+
+  it('prioritizes downloading over paused jobs', () => {
+    const summary = downloadSidebarSummary([
+      makeJob({ status: makeStatus({ id: 'paused', state: 'paused' }) }),
+      makeJob({ status: makeStatus({ id: 'active', progress: 20 }) }),
+    ])
+    expect(summary.phase).toBe('downloading')
+    expect(summary.inProgressCount).toBe(2)
+  })
+
+  it('reports stalled phase when downloads stall', () => {
+    const summary = downloadSidebarSummary([
+      makeJob({ status: makeStatus({ state: 'stalled', progress: 12 }) }),
+    ])
+    expect(summary.phase).toBe('stalled')
+    expect(summary.stalledCount).toBe(1)
   })
 })

@@ -135,6 +135,12 @@ body {
     var(--app-safe-left);
 }
 
+button:not(:disabled),
+a[href],
+[role="button"]:not([disabled]):not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
 body.modal-open {
   overflow: hidden;
 }
@@ -518,7 +524,7 @@ html[data-theme="dark"] .mac-elevated {
 
 .app-movie-scroll {
   padding-inline: 1.25rem;
-  padding-top: 1.25rem;
+  padding-top: 1rem;
 }
 
 .app-movie-scroll.app-touch-bottom-scroll-padded {
@@ -529,6 +535,11 @@ html[data-theme="dark"] .mac-elevated {
   padding-inline: 0.75rem;
   padding-top: 0.75rem;
   padding-bottom: calc(0.75rem + var(--app-home-indicator));
+}
+
+.app-mobile-toolbar {
+  position: relative;
+  z-index: 10;
 }
 
 /* ── Mobile layout (< 1024px) ───────────────────────────────────────────── */
@@ -547,11 +558,6 @@ html[data-theme="dark"] .mac-elevated {
   }
 
   /* Paint toolbar color into the body safe-area band without shifting flex layout. */
-  .app-mobile-toolbar {
-    position: relative;
-    z-index: 2;
-  }
-
   .app-mobile-toolbar::before {
     content: '';
     position: absolute;
@@ -1291,6 +1297,20 @@ html[data-theme="dark"] .mac-elevated {
 .movie-focus-ring--outset::before {
   inset: -4.5px;
   padding: 4.5px;
+}
+
+.app-kiosk-focus {
+  outline: 2px solid var(--mac-accent) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--mac-accent-soft);
+}
+
+button.app-kiosk-focus,
+a.app-kiosk-focus,
+input.app-kiosk-focus,
+select.app-kiosk-focus,
+textarea.app-kiosk-focus {
+  border-color: color-mix(in srgb, var(--mac-accent) 55%, var(--mac-border)) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
