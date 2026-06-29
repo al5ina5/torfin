@@ -1,7 +1,13 @@
+import { isTauri } from '@tauri-apps/api/core'
+
 import type { StreamResult } from '../types'
 
 export function isTauriRuntime() {
-  return Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  if (typeof window === 'undefined') return false
+  return (
+    isTauri()
+    || Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  )
 }
 
 function apiHeaders(path: string) {
