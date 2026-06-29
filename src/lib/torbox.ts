@@ -7,6 +7,10 @@ export const ALLOWED_FETCH_HOSTS = [
 ] as const
 
 const VIDEO_FILENAME_PATTERN = /\.(mkv|mp4|avi|mov|webm|m4v)$/i
+const TORRENT_APPEAR_TIMEOUT_MS = 120_000
+const TORRENT_READY_TIMEOUT_MS = 180_000
+const TORRENT_POLL_INTERVAL_MS = 2_000
+const DOWNLOAD_LINK_ATTEMPTS = 5
 
 export type TorboxResolveInput = {
   token: string
@@ -39,15 +43,13 @@ type TorboxTorrent = {
   info_hash?: string
   infoHash?: string
   torrent_hash?: string
+  cached?: boolean
+  download_state?: string
+  state?: string
   files?: TorboxTorrentFile[]
   file?: TorboxTorrentFile[]
   filelist?: TorboxTorrentFile[]
   contents?: TorboxTorrentFile[]
-}
-
-function asId(value: unknown): string | number | null {
-  if (typeof value === 'string' || typeof value === 'number') return value
-  return null
 }
 
 function bodyDetail(body: unknown) {
@@ -57,7 +59,58 @@ function bodyDetail(body: unknown) {
   return typeof detail === 'string' ? detail : ''
 }
 
-async function fetchJson(url: string, options: RequestInit = {}) {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export function isQueuedTorrentDetail(detail: string | null | undefined) {
+  const message = String(detail || '').toLowerCase()
+  return message.includes('queued') || message.includes('notification when it is processed')
+}
+
+export function isRetriableTorboxError(message: unknown) {
+  const text = String(message || '').toLowerCase()
+  return (
+    text.includes('there was an error processing your request')
+    || text.includes('please try again later')
+    || text.includes('internal server error')
+    || text.includes('bad gateway')
+    || text.includes('service unavailable')
+    || text.includes('gateway timeout')
+    || /^5\d\d/.test(text)
+  )
+}
+
+export function extractTorrentId(body: unknown) {
+  if (!body || typeof body !== 'object') return null
+  const record = body as Record<string, unknown>
+  const data = record.data && typeof record.data === 'object' ? (record.data as Record<string, unknown>) : null
+  const candidates = [data?.torrent_id, data?.id, record.torrent_id, record.id]
+  for (const candidate of candidates) {
+    const parsed = Number(candidate)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return null
+}
+
+export function isTorrentCached(torrent: TorboxTorrent | null | undefined) {
+  if (!torrent) return false
+  if (torrent.cached === true) return true
+  const state = String(torrent.download_state || torrent.state || '').toLowerCase()
+  return state.includes('cached') || state.includes('completed') || state.includes('complete')
+}
+
+function torrentFiles(torrent: TorboxTorrent | null | undefined) {
+  return torrent?.files || torrent?.file || torrent?.filelist || torrent?.contents || []
+}
+
+export function hasSelectableVideoFile(torrent: TorboxTorrent | null | undefined) {
+  const files = torrentFiles(torrent)
+  if (!Array.isArray(files)) return false
+  return files.some((file) => isVideoFilename(fileName(file)) && numericFileId(file) !== null)
+}
+
+async function torboxFetch(url: string, options: RequestInit = {}) {
   const response = await fetch(url, options)
   const text = await response.text()
   let body: unknown
@@ -66,13 +119,16 @@ async function fetchJson(url: string, options: RequestInit = {}) {
   } catch {
     body = text
   }
-  if (!response.ok) {
-    if (typeof body === 'object' && body && 'message' in body && typeof body.message === 'string') {
-      throw new Error(body.message)
-    }
-    throw new Error(bodyDetail(body) || (typeof body === 'string' ? body : `${response.status} ${response.statusText}`))
+  const detail = bodyDetail(body)
+  const success = typeof body === 'object' && body && 'success' in body ? (body as { success?: boolean }).success : undefined
+  if (!response.ok || success === false) {
+    throw new Error(detail || (typeof body === 'string' ? body : `${response.status} ${response.statusText}`))
   }
   return body
+}
+
+async function fetchJson(url: string, options: RequestInit = {}) {
+  return torboxFetch(url, options)
 }
 
 export function extractInfoHash(value: string | null | undefined) {
@@ -99,7 +155,7 @@ export function isVideoFilename(name: string | null | undefined) {
 }
 
 export function chooseFileId(torrent: TorboxTorrent | null | undefined, fileIdx?: number | null, filename?: string | null) {
-  const files = torrent?.files || torrent?.file || torrent?.filelist || torrent?.contents || []
+  const files = torrentFiles(torrent)
   if (!Array.isArray(files)) return 0
 
   const indexed = Number.isFinite(fileIdx) ? files[Number(fileIdx)] : null
@@ -140,8 +196,11 @@ export function normalizeAllowedFetchJsonUrl(value: string | null | undefined) {
   return url.toString()
 }
 
-async function findTorrentByHash(token: string, hash: string) {
-  const body = await fetchJson('https://api.torbox.app/v1/api/torrents/mylist', {
+async function findTorrentByHash(token: string, hash: string, bypassCache = false) {
+  const url = new URL('https://api.torbox.app/v1/api/torrents/mylist')
+  if (bypassCache) url.searchParams.set('bypass_cache', 'true')
+  url.searchParams.set('limit', '1000')
+  const body = await fetchJson(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   })
   const torrents = Array.isArray((body as { data?: unknown[] })?.data)
@@ -154,7 +213,18 @@ async function findTorrentByHash(token: string, hash: string) {
     const candidates = [torrent.hash, torrent.info_hash, torrent.infoHash, torrent.torrent_hash]
     return candidates.some((candidate) => String(candidate || '').toLowerCase() === wanted)
   })
-  return asId(found?.id) ?? asId(found?.torrent_id) ?? asId(found?.torrentId)
+  const parsed = Number(found?.id ?? found?.torrent_id ?? found?.torrentId)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+async function waitForTorrentByHash(token: string, hash: string, timeoutMs = TORRENT_APPEAR_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const id = await findTorrentByHash(token, hash, true)
+    if (id) return id
+    await sleep(TORRENT_POLL_INTERVAL_MS)
+  }
+  return null
 }
 
 async function createTorrent(token: string, hash: string, name?: string | null) {
@@ -169,14 +239,23 @@ async function createTorrent(token: string, hash: string, name?: string | null) 
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   })
-  const bodyRecord = body as { data?: Record<string, unknown>; id?: unknown; torrent_id?: unknown }
-  const id = asId(bodyRecord.data?.id) ?? asId(bodyRecord.data?.torrent_id) ?? asId(bodyRecord.id) ?? asId(bodyRecord.torrent_id)
-  if (!id) throw new Error(bodyDetail(body) || 'Torbox did not return a torrent id.')
+  let id = extractTorrentId(body)
+  if (!id) id = await waitForTorrentByHash(token, hash)
+  if (!id) {
+    const detail = bodyDetail(body)
+    if (isQueuedTorrentDetail(detail)) {
+      throw new Error('Torbox queued this torrent but it did not appear in your library in time. Try again shortly.')
+    }
+    throw new Error(detail || 'Torbox did not return a torrent id.')
+  }
   return id
 }
 
-async function getTorrent(token: string, torrentId: string | number) {
-  const body = await fetchJson(`https://api.torbox.app/v1/api/torrents/mylist?id=${encodeURIComponent(torrentId)}`, {
+async function getTorrent(token: string, torrentId: string | number, bypassCache = false) {
+  const url = new URL('https://api.torbox.app/v1/api/torrents/mylist')
+  url.searchParams.set('id', String(torrentId))
+  if (bypassCache) url.searchParams.set('bypass_cache', 'true')
+  const body = await fetchJson(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (Array.isArray((body as { data?: unknown[] })?.data)) {
@@ -184,6 +263,27 @@ async function getTorrent(token: string, torrentId: string | number) {
   }
   const data = (body as { data?: TorboxTorrent }).data
   return (data || body) as TorboxTorrent
+}
+
+async function waitForTorrentReady(token: string, torrentId: string | number) {
+  const deadline = Date.now() + TORRENT_READY_TIMEOUT_MS
+  let lastState = ''
+  while (Date.now() < deadline) {
+    const torrent = await getTorrent(token, torrentId, true)
+    lastState = String(torrent?.download_state || torrent?.state || '')
+    const state = lastState.toLowerCase()
+    if (state.includes('error') || state.includes('failed')) {
+      throw new Error('Torbox reported an error caching this torrent. Try another result.')
+    }
+    if (isTorrentCached(torrent) && hasSelectableVideoFile(torrent)) return torrent
+    if (isTorrentCached(torrent) && torrentFiles(torrent).length > 0) return torrent
+    await sleep(TORRENT_POLL_INTERVAL_MS)
+  }
+  throw new Error(
+    lastState
+      ? `Torbox is still preparing this torrent (${lastState}). Wait a moment and try again.`
+      : 'Torbox is still preparing this torrent. Wait a moment and try again.',
+  )
 }
 
 function extractDownloadUrl(body: unknown) {
@@ -196,7 +296,7 @@ function extractDownloadUrl(body: unknown) {
   throw new Error(bodyDetail(body) || 'Torbox did not return a direct download URL.')
 }
 
-async function requestDownloadLink(token: string, torrentId: string | number, fileId: number) {
+async function requestDownloadLinkOnce(token: string, torrentId: string | number, fileId: number) {
   const url = new URL('https://api.torbox.app/v1/api/torrents/requestdl')
   url.searchParams.set('token', token)
   url.searchParams.set('torrent_id', String(torrentId))
@@ -207,15 +307,30 @@ async function requestDownloadLink(token: string, torrentId: string | number, fi
   return extractDownloadUrl(await fetchJson(url.toString()))
 }
 
+async function requestDownloadLink(token: string, torrentId: string | number, fileId: number) {
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= DOWNLOAD_LINK_ATTEMPTS; attempt += 1) {
+    try {
+      return await requestDownloadLinkOnce(token, torrentId, fileId)
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      if (!isRetriableTorboxError(message) || attempt === DOWNLOAD_LINK_ATTEMPTS) throw error
+      await sleep(attempt * 1500)
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Torbox did not return a direct download URL.')
+}
+
 export async function resolveTorboxStream({ token, infoHash, fileIdx, filename, directUrl }: TorboxResolveInput) {
   if (directUrl && /^https?:\/\//.test(directUrl)) return directUrl
   const hash = infoHash || extractInfoHash(directUrl)
   if (!hash) throw new Error('This stream does not expose an info hash or playable URL.')
   if (!String(token || '').trim()) throw new Error('Add your Torbox API key before resolving Torbox results.')
   const cleanToken = token.trim()
-  const existingTorrentId = await findTorrentByHash(cleanToken, hash)
+  const existingTorrentId = await findTorrentByHash(cleanToken, hash, true)
   const torrentId = existingTorrentId || (await createTorrent(cleanToken, hash, filename))
-  const torrent = await getTorrent(cleanToken, torrentId)
+  const torrent = await waitForTorrentReady(cleanToken, torrentId)
   const fileId = chooseFileId(torrent, Number(fileIdx), filename)
   return requestDownloadLink(cleanToken, torrentId, fileId)
 }

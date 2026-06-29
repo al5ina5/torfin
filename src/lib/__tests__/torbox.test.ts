@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { chooseFileId, normalizeAllowedFetchJsonUrl } from '../torbox'
+import {
+  chooseFileId,
+  extractTorrentId,
+  hasSelectableVideoFile,
+  isQueuedTorrentDetail,
+  isRetriableTorboxError,
+  isTorrentCached,
+  normalizeAllowedFetchJsonUrl,
+} from '../torbox'
 
 describe('chooseFileId', () => {
   it('uses indexed file when it is a video with numeric id', () => {
@@ -45,6 +53,50 @@ describe('chooseFileId', () => {
 
     expect(chooseFileId({ files: [{ id: 'not-a-number', name: 'note.txt' }] }, Number.NaN)).toBe(0)
     expect(chooseFileId({ files: 'invalid' } as unknown as Parameters<typeof chooseFileId>[0], Number.NaN)).toBe(0)
+  })
+})
+
+describe('extractTorrentId', () => {
+  it('reads positive torrent ids from common response shapes', () => {
+    expect(extractTorrentId({ data: { torrent_id: 42 } })).toBe(42)
+    expect(extractTorrentId({ data: { id: 7 } })).toBe(7)
+    expect(extractTorrentId({ torrent_id: 99 })).toBe(99)
+  })
+
+  it('ignores missing or zero ids', () => {
+    expect(extractTorrentId({ data: { torrent_id: 0 } })).toBeNull()
+    expect(extractTorrentId({ detail: 'Torrent queued successfully.' })).toBeNull()
+  })
+})
+
+describe('isQueuedTorrentDetail', () => {
+  it('detects queued torrent responses', () => {
+    expect(isQueuedTorrentDetail('Torrent queued successfully.')).toBe(true)
+    expect(isQueuedTorrentDetail('Torrent creation request has been queued. You will receive a notification when it is processed.')).toBe(true)
+    expect(isQueuedTorrentDetail('Torrent Added Successfully')).toBe(false)
+  })
+})
+
+describe('isRetriableTorboxError', () => {
+  it('retries generic Torbox processing failures', () => {
+    expect(isRetriableTorboxError('There was an error processing your request. Please try again later.')).toBe(true)
+    expect(isRetriableTorboxError('Add your Torbox API key before resolving Torbox results.')).toBe(false)
+  })
+})
+
+describe('isTorrentCached', () => {
+  it('detects cached torrent states', () => {
+    expect(isTorrentCached({ cached: true })).toBe(true)
+    expect(isTorrentCached({ download_state: 'cached' })).toBe(true)
+    expect(isTorrentCached({ state: 'downloading' })).toBe(false)
+  })
+})
+
+describe('hasSelectableVideoFile', () => {
+  it('requires a video file with a numeric id', () => {
+    expect(hasSelectableVideoFile({ files: [{ id: 1, name: 'movie.mkv' }] })).toBe(true)
+    expect(hasSelectableVideoFile({ files: [{ id: 1, name: 'readme.txt' }] })).toBe(false)
+    expect(hasSelectableVideoFile({ files: [{ name: 'movie.mkv' }] })).toBe(false)
   })
 })
 
