@@ -5,9 +5,23 @@ export type MovieSort = 'catalog' | 'ratingDesc' | 'yearDesc' | 'yearAsc' | 'tit
 export type BuiltinResultProfile = 'netflix' | 'dataSaver' | 'cinephile'
 export type ResultProfile = BuiltinResultProfile | (string & {})
 export type DownloadSort = 'newest' | 'oldest' | 'active' | 'finishedLast'
-export type PreferencesTab = 'general' | 'plugins' | 'downloads' | 'playback'
+export type PreferencesTab = 'general' | 'playback' | 'downloads' | 'plugins' | 'advanced'
 
 export type LibraryCatalogId = 'watchlist' | 'continue' | 'recent'
+
+export type StartupCatalogId =
+  | 'lastUsed'
+  | LibraryCatalogId
+  | 'trending'
+  | 'topRated'
+  | 'featured'
+  | 'newReleases'
+
+export type JellyfinDuplicateAction = 'ask' | 'allow' | 'block'
+
+export type NextEpisodeCountdownSeconds = 0 | 5 | 10 | 15
+
+export type ApiRequestTimeoutSeconds = 10 | 15 | 30
 
 export type CustomStreamProfile = {
   id: string
@@ -91,6 +105,19 @@ export type AppPreferences = {
   downloadNotifications: boolean
   theme: ThemeMode
   libraryViewMode: LibraryViewMode
+  defaultContentType: ContentType
+  defaultStartupCatalog: StartupCatalogId
+  compactResultsLimit: number
+  continueWatchingLimit: number
+  recentViewsLimit: number
+  searchHistoryEnabled: boolean
+  nextEpisodeCountdown: NextEpisodeCountdownSeconds
+  expandStreamResultsByDefault: boolean
+  resumeMinSeconds: number
+  completeRatioPercent: number
+  alwaysConfirmDownloadDestination: boolean
+  jellyfinDuplicateAction: JellyfinDuplicateAction
+  apiRequestTimeoutSeconds: ApiRequestTimeoutSeconds
 }
 
 export type ThemeMode = 'system' | 'light' | 'dark'

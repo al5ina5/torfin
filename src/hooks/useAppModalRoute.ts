@@ -24,51 +24,54 @@ export function useAppModalRoute() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
-  const navigate = useCallback((next: AppRoute, replace = false) => {
-    writeAppRoute(next, replace)
-    setRoute(next)
+  const navigate = useCallback((next: AppRoute | ((current: AppRoute) => AppRoute), replace = false) => {
+    setRoute((current) => {
+      const resolved = typeof next === 'function' ? next(current) : next
+      writeAppRoute(resolved, replace)
+      return resolved
+    })
   }, [])
 
-  const closeModal = useCallback(() => navigate(withoutModal(route)), [navigate, route])
+  const closeModal = useCallback(() => navigate((current) => withoutModal(current)), [navigate])
 
   const openSettings = useCallback(
     (tab: PreferencesTab = 'general', replace = false) =>
-      navigate(withModal(route, { kind: 'settings', tab }), replace),
-    [navigate, route],
+      navigate((current) => withModal(current, { kind: 'settings', tab }), replace),
+    [navigate],
   )
 
-  const openDownloads = useCallback(() => navigate(withModal(route, { kind: 'downloads' })), [navigate, route])
-  const openFilters = useCallback(() => navigate(withModal(route, { kind: 'filters' })), [navigate, route])
+  const openDownloads = useCallback(() => navigate((current) => withModal(current, { kind: 'downloads' })), [navigate])
+  const openFilters = useCallback(() => navigate((current) => withModal(current, { kind: 'filters' })), [navigate])
 
   const setSettingsTab = useCallback(
-    (tab: PreferencesTab) => navigate(withModal(route, { kind: 'settings', tab }), true),
-    [navigate, route],
+    (tab: PreferencesTab) => navigate((current) => withModal(current, { kind: 'settings', tab }), true),
+    [navigate],
   )
 
   const navigateBrowse = useCallback(
     (contentType: ContentType, catalogId: string, replace = false) =>
-      navigate(browseRoute(contentType, catalogId, withoutTitle(route)), replace),
-    [navigate, route],
+      navigate((current) => browseRoute(contentType, catalogId, withoutTitle(current)), replace),
+    [navigate],
   )
 
   const navigateSearch = useCallback(
     (contentType: ContentType, query: string, replace = false) => {
-      if (!query.trim()) {
-        navigate(browseRoute(contentType, route.catalogId, withoutTitle(route)), replace)
-        return
-      }
-      navigate(searchRoute(contentType, query, withoutTitle(route)), replace)
+      navigate((current) => {
+        const base = withoutTitle(current)
+        if (!query.trim()) return browseRoute(contentType, base.catalogId, base)
+        return searchRoute(contentType, query, base)
+      }, replace)
     },
-    [navigate, route],
+    [navigate],
   )
 
   const navigateToTitle = useCallback(
     (movie: Movie, season?: number | null, episode?: number | null, replace = false) =>
-      navigate(titleRoute(movie, route, season, episode), replace),
-    [navigate, route],
+      navigate((current) => titleRoute(movie, current, season, episode), replace),
+    [navigate],
   )
 
-  const closeTitle = useCallback(() => navigate(withoutTitle(route)), [navigate, route])
+  const closeTitle = useCallback(() => navigate((current) => withoutTitle(current)), [navigate])
 
   return {
     route,

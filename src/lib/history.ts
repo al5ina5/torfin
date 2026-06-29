@@ -1,13 +1,19 @@
 import type { Movie } from '../types'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson } from './storage'
 
+let recentViewsLimit = 30
+
+export function setRecentViewsLimit(limit: number) {
+  recentViewsLimit = limit
+}
+
 export function loadRecentViews() {
   return loadStoredJson<Movie[]>(STORAGE_KEYS.recentViews, [])
 }
 
 export function recordRecentView(movie: Movie) {
   const key = `${movie.type}:${movie.id}`
-  const next = [movie, ...loadRecentViews().filter((entry) => `${entry.type}:${entry.id}` !== key)].slice(0, 30)
+  const next = [movie, ...loadRecentViews().filter((entry) => `${entry.type}:${entry.id}` !== key)].slice(0, recentViewsLimit)
   saveStoredJson(STORAGE_KEYS.recentViews, next)
   return next
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
-import { PictureInPicture2 } from 'lucide-react'
 
+import { insertAirPlayButton, registerAirPlayButton } from '../lib/videoPlayerAirPlay'
 import type { MediaInfo } from '../types'
 
 type VideoPlayerProps = {
@@ -36,6 +36,75 @@ function sourceType(url: string) {
   return undefined
 }
 
+function destroyPlayer(player: ReturnType<typeof videojs>, host: HTMLDivElement | null) {
+  try {
+    player.pause()
+    const video = player.el()?.querySelector('video')
+    if (video instanceof HTMLVideoElement) {
+      video.pause()
+      video.removeAttribute('src')
+      video.srcObject = null
+      video.load()
+    }
+    player.dispose()
+  } catch {
+    // Player may already be disposed.
+  }
+  host?.replaceChildren()
+}
+
+function buildPlayerOptions(autoPlay: boolean, url: string) {
+  const type = sourceType(url)
+  return {
+    autoplay: autoPlay,
+    controls: true,
+    fill: true,
+    fluid: false,
+    liveui: false,
+    responsive: false,
+    playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+    controlBar: {
+      skipButtons: {
+        forward: 10,
+        backward: 10,
+      },
+    },
+    html5: {
+      vhs: {
+        overrideNative: !videojs.browser.IS_ANY_SAFARI,
+        allowSeeksWithinUnsafeLiveWindow: true,
+        smoothQualityChange: true,
+      },
+    },
+    liveTracker: {
+      trackingThreshold: 0,
+      liveTolerance: 20,
+    },
+    sources: [type ? { src: url, type } : { src: url }],
+  }
+}
+
+function applyStartAt(player: ReturnType<typeof videojs>, startAt: number | null) {
+  if (!startAt || startAt <= 0) return
+
+  const seek = () => {
+    const duration = player.duration()
+    const target = typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+      ? Math.min(startAt, Math.max(duration - 0.25, 0))
+      : startAt
+    player.currentTime(target)
+  }
+
+  if (player.readyState() >= 1) {
+    seek()
+    return
+  }
+
+  player.one('loadedmetadata', seek)
+}
+
+registerAirPlayButton()
+
 export function VideoPlayer({
   url,
   title,
@@ -52,50 +121,56 @@ export function VideoPlayer({
 }: VideoPlayerProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null)
-  const videoElRef = useRef<HTMLVideoElement | null>(null)
   const ignoreErrorsRef = useRef(false)
+  const onErrorRef = useRef(onError)
+  const onTimeUpdateRef = useRef(onTimeUpdate)
+  const onEndedRef = useRef(onEnded)
+
+  onErrorRef.current = onError
+  onTimeUpdateRef.current = onTimeUpdate
+  onEndedRef.current = onEnded
 
   useEffect(() => {
     if (!url || !hostRef.current) return
     ignoreErrorsRef.current = false
+
+    const host = hostRef.current
+    host.replaceChildren()
 
     const videoElement = document.createElement('video-js')
     videoElement.classList.add('video-js', 'vjs-big-play-centered', 'movie-player-video')
     videoElement.setAttribute('playsinline', 'true')
     videoElement.setAttribute('preload', 'auto')
     videoElement.setAttribute('x-webkit-airplay', 'allow')
-    hostRef.current.append(videoElement)
+    host.append(videoElement)
 
-    const type = sourceType(url)
-    const player = videojs(videoElement, {
-      autoplay: autoPlay,
-      controls: true,
-      fluid: true,
-      liveui: false,
-      playbackRates: [0.5, 1, 1.25, 1.5, 2],
-      responsive: true,
-      sources: [type ? { src: url, type } : { src: url }],
-    })
+    const player = videojs(videoElement, buildPlayerOptions(autoPlay, url))
     playerRef.current = player
+
     const handleError = () => {
       if (ignoreErrorsRef.current) return
-      onError?.()
+      onErrorRef.current?.()
     }
     const handleTimeUpdate = () => {
       const current = player.currentTime()
       const duration = player.duration()
       if (typeof current === 'number' && typeof duration === 'number' && Number.isFinite(current) && Number.isFinite(duration) && duration > 0) {
-        onTimeUpdate?.(current, duration)
+        onTimeUpdateRef.current?.(current, duration)
       }
     }
-    const handleEnded = () => onEnded?.()
+    const handleEnded = () => onEndedRef.current?.()
+
     player.on('error', handleError)
     player.on('timeupdate', handleTimeUpdate)
     player.on('ended', handleEnded)
     player.ready(() => {
       const el = player.el().querySelector('video')
-      if (el instanceof HTMLVideoElement) videoElRef.current = el
-      if (startAt && startAt > 0) player.currentTime(startAt)
+      if (el instanceof HTMLVideoElement) {
+        el.setAttribute('x-webkit-airplay', 'allow')
+        el.setAttribute('webkit-playsinline', 'true')
+      }
+      insertAirPlayButton(player)
+      applyStartAt(player, startAt)
     })
 
     return () => {
@@ -103,43 +178,20 @@ export function VideoPlayer({
       player.off('error', handleError)
       player.off('timeupdate', handleTimeUpdate)
       player.off('ended', handleEnded)
-      player.dispose()
+      destroyPlayer(player, host)
       if (playerRef.current === player) playerRef.current = null
-      videoElRef.current = null
     }
-  }, [autoPlay, onEnded, onError, onTimeUpdate, startAt, url])
-
-  async function enterPictureInPicture() {
-    const video = videoElRef.current
-    if (!video) return
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture()
-        return
-      }
-      if (video.requestPictureInPicture) await video.requestPictureInPicture()
-    } catch {
-      // PiP may be unavailable in this browser context.
-    }
-  }
+  }, [autoPlay, startAt, url])
 
   if (!url) return null
 
   return (
     <section className="movie-player block overflow-hidden bg-black text-white">
       <div className="movie-player-stage">
-        <div className="movie-player-titlebar flex items-center justify-between gap-2 pr-2">
-          <span className="truncate">{title}</span>
-          <button
-            type="button"
-            onClick={() => { void enterPictureInPicture() }}
-            className="grid size-7 shrink-0 place-items-center rounded-md border border-white/15 bg-white/10 transition hover:bg-white/20"
-            title="Picture in Picture"
-          >
-            <PictureInPicture2 size={14} />
-          </button>
+        <div className="movie-player-titlebar">
+          <span className="movie-player-title">{title}</span>
         </div>
-        <div ref={hostRef} className="movie-player-video-host aspect-video w-full bg-black" />
+        <div ref={hostRef} className="movie-player-video-host aspect-video w-full" />
       </div>
       {mediaInfo?.audioTracks.length || mediaInfo?.subtitleTracks.length ? (
         <div className="movie-player-trackbar">

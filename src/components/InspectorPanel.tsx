@@ -44,6 +44,8 @@ type InspectorPanelProps = {
   onPlaybackError?: () => void
   onPlaybackTimeUpdate?: (currentTime: number, duration: number) => void
   onPlaybackEnded?: () => void
+  nextEpisodePrompt?: { remaining: number; next: { season: number; episode: number } } | null
+  onCancelNextEpisode?: () => void
   resolvingKey: string
   downloadingKey: string
   onChooseAudio: (value: string) => void
@@ -98,6 +100,8 @@ function InspectorContent({
   onPlaybackError,
   onPlaybackTimeUpdate,
   onPlaybackEnded,
+  nextEpisodePrompt,
+  onCancelNextEpisode,
   resolvingKey,
   downloadingKey,
   onChooseAudio,
@@ -313,10 +317,11 @@ function InspectorContent({
           </div>
         ) : null}
 
-        {playbackUrl || playbackError || playbackStatus ? (
+        {playbackUrl || playbackError || playbackStatus || nextEpisodePrompt ? (
           <section className="overflow-hidden rounded-lg border border-black/20 bg-black shadow-lg">
             {playbackUrl ? (
               <VideoPlayer
+                key={playbackUrl}
                 url={playbackUrl}
                 title={playbackTitle}
                 autoPlay
@@ -342,6 +347,21 @@ function InspectorContent({
             {playbackError ? (
               <div className="border-t border-white/10 bg-black px-3 py-2">
                 <p className="rounded-md bg-red-500/20 px-2 py-1.5 text-[11px] leading-4 text-red-100">{playbackError}</p>
+              </div>
+            ) : null}
+            {nextEpisodePrompt ? (
+              <div className="flex items-center justify-between gap-3 border-t border-white/10 bg-black/90 px-3 py-2.5">
+                <p className="text-[12px] text-white/90">
+                  Next episode S{String(nextEpisodePrompt.next.season).padStart(2, '0')}E
+                  {String(nextEpisodePrompt.next.episode).padStart(2, '0')} in {nextEpisodePrompt.remaining}s
+                </p>
+                <button
+                  type="button"
+                  onClick={onCancelNextEpisode}
+                  className="h-7 shrink-0 rounded-md border border-white/20 px-2.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
+                >
+                  Cancel
+                </button>
               </div>
             ) : null}
           </section>

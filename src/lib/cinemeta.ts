@@ -1,31 +1,42 @@
+import { filterGenres, genreToCatalogId } from './genres'
 import type { CinemetaMovie, ContentType, Movie } from '../types'
 
 const CINEMETA_BASE_URL = 'https://v3-cinemeta.strem.io'
 export const CURRENT_RELEASE_YEAR = new Date().getUTCFullYear()
 
-export const CINEMETA_CATALOG_URLS = {
+function genreCatalogUrls(contentType: ContentType) {
+  const catalogRoot = contentType === 'series' ? 'series' : 'movie'
+  return Object.fromEntries(
+    filterGenres.map((genre) => [
+      genreToCatalogId(genre),
+      `${CINEMETA_BASE_URL}/catalog/${catalogRoot}/top/genre=${encodeURIComponent(genre)}.json`,
+    ]),
+  )
+}
+
+const baseMovieCatalogUrls = {
   trending: `${CINEMETA_BASE_URL}/catalog/movie/top.json`,
   topRated: `${CINEMETA_BASE_URL}/catalog/movie/imdbRating.json`,
   featured: `${CINEMETA_BASE_URL}/catalog/movie/top.json`,
   newReleases: `${CINEMETA_BASE_URL}/catalog/movie/year/genre=${encodeURIComponent(String(CURRENT_RELEASE_YEAR))}.json`,
-  action: `${CINEMETA_BASE_URL}/catalog/movie/top/genre=Action.json`,
-  comedy: `${CINEMETA_BASE_URL}/catalog/movie/top/genre=Comedy.json`,
-  sciFi: `${CINEMETA_BASE_URL}/catalog/movie/top/genre=Sci-Fi.json`,
-  horror: `${CINEMETA_BASE_URL}/catalog/movie/top/genre=Horror.json`,
-  family: `${CINEMETA_BASE_URL}/catalog/movie/top/genre=Family.json`,
-} as const
+}
 
-export const CINEMETA_SERIES_CATALOG_URLS = {
+const baseSeriesCatalogUrls = {
   trending: `${CINEMETA_BASE_URL}/catalog/series/top.json`,
   topRated: `${CINEMETA_BASE_URL}/catalog/series/imdbRating.json`,
   featured: `${CINEMETA_BASE_URL}/catalog/series/top.json`,
   newReleases: `${CINEMETA_BASE_URL}/catalog/series/year/genre=${encodeURIComponent(String(CURRENT_RELEASE_YEAR))}.json`,
-  action: `${CINEMETA_BASE_URL}/catalog/series/top/genre=Action.json`,
-  comedy: `${CINEMETA_BASE_URL}/catalog/series/top/genre=Comedy.json`,
-  sciFi: `${CINEMETA_BASE_URL}/catalog/series/top/genre=Sci-Fi.json`,
-  horror: `${CINEMETA_BASE_URL}/catalog/series/top/genre=Horror.json`,
-  family: `${CINEMETA_BASE_URL}/catalog/series/top/genre=Family.json`,
-} as const
+}
+
+export const CINEMETA_CATALOG_URLS = {
+  ...baseMovieCatalogUrls,
+  ...genreCatalogUrls('movie'),
+}
+
+export const CINEMETA_SERIES_CATALOG_URLS = {
+  ...baseSeriesCatalogUrls,
+  ...genreCatalogUrls('series'),
+}
 
 export function searchUrl(query: string, type: ContentType = 'movie') {
   return `${CINEMETA_BASE_URL}/catalog/${type}/top/search=${encodeURIComponent(query)}.json`

@@ -1,11 +1,29 @@
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
 
 import { defaultCustomProfile } from '../lib/custom-profiles'
-import type { AppPreferences, CustomStreamProfile, DownloadConfig, PluginConfig, ThemeMode } from '../types'
-import type { PreferencesTab } from '../types'
-import type { ResultProfile } from '../types'
+import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
+import type {
+  AppPreferences,
+  CustomStreamProfile,
+  DownloadConfig,
+  JellyfinDuplicateAction,
+  NextEpisodeCountdownSeconds,
+  PluginConfig,
+  PreferencesTab,
+  ResultProfile,
+  StartupCatalogId,
+  ThemeMode,
+} from '../types'
 import { AppModal } from './AppModal'
 import { DownloadDestinationsSettings } from './DownloadDestinationsSettings'
+import {
+  SettingsField,
+  SettingsHint,
+  SettingsRange,
+  SettingsSection,
+  SettingsSelect,
+  SettingsToggle,
+} from './SettingsSection'
 import { TorboxAccountPanel } from './TorboxAccountPanel'
 
 type PreferencesModalProps = {
@@ -27,7 +45,20 @@ type PreferencesModalProps = {
   onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
   onExportSettings: () => void
   onImportSettings: () => void
+  onClearSearchHistory: () => void
+  onResetPanelSizes: () => void
 }
+
+const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
+
+const startupCatalogOptions: Array<{ id: StartupCatalogId; label: string }> = [
+  { id: 'lastUsed', label: 'Last used' },
+  ...libraryCatalogOptions.map((entry) => ({ id: entry.id as StartupCatalogId, label: entry.label })),
+  ...catalogOptions.filter((entry) => ['trending', 'topRated', 'featured', 'newReleases'].includes(entry.id)).map((entry) => ({
+    id: entry.id as StartupCatalogId,
+    label: entry.label,
+  })),
+]
 
 export function PreferencesModal({
   open,
@@ -48,6 +79,8 @@ export function PreferencesModal({
   onOpenJellyfinSignIn,
   onExportSettings,
   onImportSettings,
+  onClearSearchHistory,
+  onResetPanelSizes,
 }: PreferencesModalProps) {
   return (
     <AppModal
@@ -57,13 +90,13 @@ export function PreferencesModal({
       className="preferences-modal-panel"
       bodyClassName="modal-scroll p-5"
       headerEnd={
-        <div className="grid grid-cols-4 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
-          {(['general', 'plugins', 'downloads', 'playback'] as PreferencesTab[]).map((entry) => (
+        <div className="grid grid-cols-5 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-control)] p-0.5">
+          {preferenceTabs.map((entry) => (
             <button
               key={entry}
               type="button"
               onClick={() => onTabChange(entry)}
-              className={`h-7 min-w-24 rounded-md px-3 text-[12px] font-semibold capitalize transition ${
+              className={`h-7 min-w-0 rounded-md px-2 text-[11px] font-semibold capitalize transition ${
                 tab === entry
                   ? 'bg-[var(--mac-elevated)] text-[var(--mac-text)] shadow-sm'
                   : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control-hover)]'
@@ -76,109 +109,408 @@ export function PreferencesModal({
       }
     >
       {tab === 'general' ? (
-        <div className="mx-auto max-w-xl space-y-4">
-          <label className="grid grid-cols-[160px_1fr_48px] items-center gap-3 text-[13px]">
-            <span>Poster Size</span>
-            <input
-              type="range"
-              min="104"
-              max="192"
-              step="4"
+        <div className="mx-auto max-w-xl space-y-0">
+          <SettingsSection title="Appearance" first>
+            <SettingsRange
+              label="Poster size"
               value={preferences.posterSize}
-              onChange={(event) => onUpdatePreferences({ posterSize: Number(event.target.value) })}
-              className="accent-[var(--mac-accent)]"
+              min={104}
+              max={192}
+              step={4}
+              onChange={(posterSize) => onUpdatePreferences({ posterSize })}
             />
-            <span className="text-right text-[12px] text-[var(--mac-secondary)]">{preferences.posterSize}</span>
-          </label>
-          <label className="grid grid-cols-[160px_1fr] items-center gap-3 text-[13px]">
-            <span>Default Profile</span>
-            <select
-              value={preferences.defaultProfile}
-              onChange={(event) => onUpdatePreferences({ defaultProfile: event.target.value as ResultProfile })}
-              className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none"
-            >
-              {resultProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid grid-cols-[160px_1fr] items-center gap-3 text-[13px]">
-            <span>Theme</span>
-            <select
-              value={preferences.theme}
-              onChange={(event) => onUpdatePreferences({ theme: event.target.value as ThemeMode })}
-              className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 outline-none"
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Show Years</span>
-            <input
-              type="checkbox"
+            <SettingsField label="Theme">
+              <SettingsSelect value={preferences.theme} onChange={(value) => onUpdatePreferences({ theme: value as ThemeMode })}>
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsToggle
+              label="Show years"
               checked={preferences.showYears}
-              onChange={(event) => onUpdatePreferences({ showYears: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
+              onChange={(showYears) => onUpdatePreferences({ showYears })}
             />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Show Ratings</span>
-            <input
-              type="checkbox"
+            <SettingsToggle
+              label="Show ratings"
               checked={preferences.showRatings}
-              onChange={(event) => onUpdatePreferences({ showRatings: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
+              onChange={(showRatings) => onUpdatePreferences({ showRatings })}
             />
-          </label>
+            <SettingsField label="Library view" hint="Default layout for the movie grid. You can still toggle it from the toolbar.">
+              <SettingsSelect
+                value={preferences.libraryViewMode}
+                onChange={(value) => onUpdatePreferences({ libraryViewMode: value === 'list' ? 'list' : 'grid' })}
+              >
+                <option value="grid">Grid</option>
+                <option value="list">List</option>
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
 
-          <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-[12px] font-semibold">Custom Stream Profiles</div>
+          <SettingsSection title="Startup & Library">
+            <SettingsField label="Default content type" hint="Which library opens when the app starts at home.">
+              <SettingsSelect
+                value={preferences.defaultContentType}
+                onChange={(value) => onUpdatePreferences({ defaultContentType: value === 'series' ? 'series' : 'movie' })}
+              >
+                <option value="movie">Movies</option>
+                <option value="series">TV Shows</option>
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsField label="Startup catalog" hint="Choose a catalog for fresh app launches. Last used restores your previous browse location.">
+              <SettingsSelect
+                value={preferences.defaultStartupCatalog}
+                onChange={(value) => onUpdatePreferences({ defaultStartupCatalog: value as StartupCatalogId })}
+              >
+                {startupCatalogOptions.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsField label="Default stream profile" hint="Profile applied when you open a title.">
+              <SettingsSelect
+                value={preferences.defaultProfile}
+                onChange={(value) => onUpdatePreferences({ defaultProfile: value as ResultProfile })}
+              >
+                {resultProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.label}
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
+
+          <SettingsSection title="History & Search">
+            <SettingsField label="Continue watching limit" hint="Maximum titles kept in Continue Watching.">
+              <SettingsSelect
+                value={preferences.continueWatchingLimit}
+                onChange={(value) => onUpdatePreferences({ continueWatchingLimit: Number(value) })}
+              >
+                {[10, 20, 30, 40].map((value) => (
+                  <option key={value} value={value}>
+                    {value} titles
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsField label="Recently viewed limit" hint="How many titles appear in Recently Viewed.">
+              <SettingsSelect
+                value={preferences.recentViewsLimit}
+                onChange={(value) => onUpdatePreferences({ recentViewsLimit: Number(value) })}
+              >
+                {[10, 20, 30].map((value) => (
+                  <option key={value} value={value}>
+                    {value} titles
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsToggle
+              label="Search history"
+              hint="Remember recent searches and show them when the search field is focused."
+              checked={preferences.searchHistoryEnabled}
+              onChange={(searchHistoryEnabled) => onUpdatePreferences({ searchHistoryEnabled })}
+            />
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  onUpdatePreferences({
-                    customProfiles: [...preferences.customProfiles, defaultCustomProfile()],
-                  })
-                }
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold"
+                onClick={onClearSearchHistory}
+                className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
               >
-                <Plus size={12} />
-                Add
+                Clear search history
               </button>
             </div>
-            <div className="space-y-3">
-              {preferences.customProfiles.map((profile) => (
-                <CustomProfileEditor
-                  key={profile.id}
-                  profile={profile}
-                  onChange={(next) =>
-                    onUpdatePreferences({
-                      customProfiles: preferences.customProfiles.map((entry) => (entry.id === profile.id ? next : entry)),
-                    })
-                  }
-                  onRemove={() =>
-                    onUpdatePreferences({
-                      customProfiles: preferences.customProfiles.filter((entry) => entry.id !== profile.id),
-                    })
-                  }
-                />
-              ))}
-              {!preferences.customProfiles.length ? (
-                <p className="text-[11px] text-[var(--mac-secondary)]">Create profiles with your own resolution and size rules.</p>
-              ) : null}
-            </div>
-          </div>
+          </SettingsSection>
+        </div>
+      ) : null}
 
-          <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-            <div className="mb-2 text-[12px] font-semibold">Settings Backup</div>
-            <p className="mb-3 text-[11px] leading-4 text-[var(--mac-secondary)]">
-              Export preferences, plugins, layout, and filter presets. API keys are not included.
-            </p>
+      {tab === 'playback' ? (
+        <div className="mx-auto max-w-xl space-y-0">
+          <SettingsSection title="Auto Play" first>
+            <SettingsToggle
+              label="Auto play resolved streams"
+              hint="When streams load for a title, start playback with the top matching result."
+              checked={preferences.autoPlayResolvedStreams}
+              onChange={(autoPlayResolvedStreams) => onUpdatePreferences({ autoPlayResolvedStreams })}
+            />
+            <SettingsToggle
+              label="Prefer cached results"
+              hint="When ranking streams, boost Torbox-cached sources that start instantly."
+              checked={preferences.preferCachedResults}
+              onChange={(preferCachedResults) => onUpdatePreferences({ preferCachedResults })}
+            />
+            <SettingsToggle
+              label="Auto-play next episode"
+              hint="When an episode ends, load and play the next one in the season."
+              checked={preferences.autoPlayNextEpisode}
+              onChange={(autoPlayNextEpisode) => onUpdatePreferences({ autoPlayNextEpisode })}
+            />
+            <SettingsField
+              label="Next episode countdown"
+              hint="Delay before auto-playing the next episode. Gives you time to cancel."
+            >
+              <SettingsSelect
+                value={preferences.nextEpisodeCountdown}
+                onChange={(value) =>
+                  onUpdatePreferences({ nextEpisodeCountdown: Number(value) as NextEpisodeCountdownSeconds })
+                }
+              >
+                <option value={0}>Immediate</option>
+                <option value={5}>5 seconds</option>
+                <option value={10}>10 seconds</option>
+                <option value={15}>15 seconds</option>
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
+
+          <SettingsSection title="Stream Results">
+            <SettingsField label="Results shown" hint="How many stream options appear before expanding the list.">
+              <SettingsSelect
+                value={preferences.compactResultsLimit}
+                onChange={(value) => onUpdatePreferences({ compactResultsLimit: Number(value) })}
+              >
+                {[3, 4, 6, 8, 10].map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsToggle
+              label="Expand stream results by default"
+              hint="Show the full stream list instead of the compact preview."
+              checked={preferences.expandStreamResultsByDefault}
+              onChange={(expandStreamResultsByDefault) => onUpdatePreferences({ expandStreamResultsByDefault })}
+            />
+          </SettingsSection>
+
+          <SettingsSection title="Resume & Progress">
+            <SettingsField
+              label="Minimum resume position"
+              hint="Playback positions below this many seconds are ignored for Continue Watching."
+            >
+              <SettingsSelect
+                value={preferences.resumeMinSeconds}
+                onChange={(value) => onUpdatePreferences({ resumeMinSeconds: Number(value) })}
+              >
+                {[0, 15, 30, 60, 90, 120].map((value) => (
+                  <option key={value} value={value}>
+                    {value === 0 ? 'Any position' : `${value} seconds`}
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+            <SettingsField
+              label="Mark as finished at"
+              hint="When you reach this percentage, the title is removed from Continue Watching."
+            >
+              <SettingsSelect
+                value={preferences.completeRatioPercent}
+                onChange={(value) => onUpdatePreferences({ completeRatioPercent: Number(value) })}
+              >
+                {[85, 90, 92, 95].map((value) => (
+                  <option key={value} value={value}>
+                    {value}%
+                  </option>
+                ))}
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
+
+          <SettingsSection title="Notifications">
+            <SettingsToggle
+              label="Download completion notifications"
+              hint="Show a macOS notification when a download finishes."
+              checked={preferences.downloadNotifications}
+              onChange={(downloadNotifications) => onUpdatePreferences({ downloadNotifications })}
+            />
+            <SettingsHint>macOS will ask for notification permission once. No Apple Developer certificate is required for local download alerts.</SettingsHint>
+          </SettingsSection>
+        </div>
+      ) : null}
+
+      {tab === 'downloads' ? (
+        <div className="mx-auto max-w-2xl space-y-0">
+          <SettingsSection title="Download Behavior" first>
+            <SettingsToggle
+              label="Always confirm download destination"
+              hint="Show the destination picker even when a default destination is configured."
+              checked={preferences.alwaysConfirmDownloadDestination}
+              onChange={(alwaysConfirmDownloadDestination) => onUpdatePreferences({ alwaysConfirmDownloadDestination })}
+            />
+            <SettingsField
+              label="Jellyfin duplicate downloads"
+              hint="What to do when a title already exists in your Jellyfin library at equal or higher quality."
+            >
+              <SettingsSelect
+                value={preferences.jellyfinDuplicateAction}
+                onChange={(value) => onUpdatePreferences({ jellyfinDuplicateAction: value as JellyfinDuplicateAction })}
+              >
+                <option value="ask">Ask before downloading</option>
+                <option value="allow">Always allow</option>
+                <option value="block">Skip download</option>
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
+
+          <SettingsSection title="Destinations & Jellyfin">
+            <DownloadDestinationsSettings
+              downloadConfig={downloadConfig}
+              jellyfinApiKey={jellyfinApiKey}
+              onUpdateDownloadConfig={onUpdateDownloadConfig}
+              onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
+              onChangeJellyfinApiKey={onChangeJellyfinApiKey}
+              onOpenJellyfinSignIn={onOpenJellyfinSignIn}
+            />
+          </SettingsSection>
+        </div>
+      ) : null}
+
+      {tab === 'plugins' ? (
+        <div className="mx-auto max-w-2xl space-y-0">
+          <SettingsSection title="Torbox Account" first>
+            <TorboxAccountPanel apiKey={torboxApiKey} />
+            <label className="block">
+              <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[var(--mac-secondary)]">
+                <KeyRound size={13} />
+                Torbox API Key
+              </span>
+              <input
+                value={torboxApiKey}
+                onChange={(event) => onChangeTorboxApiKey(event.target.value)}
+                type="password"
+                className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[12px] outline-none focus:border-[var(--mac-accent)]"
+              />
+            </label>
+          </SettingsSection>
+
+          <SettingsSection title="Network">
+            <SettingsField
+              label="Addon request timeout"
+              hint="How long to wait for stream addon responses in the web app before showing an error."
+            >
+              <SettingsSelect
+                value={preferences.apiRequestTimeoutSeconds}
+                onChange={(value) =>
+                  onUpdatePreferences({ apiRequestTimeoutSeconds: Number(value) as AppPreferences['apiRequestTimeoutSeconds'] })
+                }
+              >
+                <option value={10}>10 seconds</option>
+                <option value={15}>15 seconds</option>
+                <option value={30}>30 seconds</option>
+              </SettingsSelect>
+            </SettingsField>
+          </SettingsSection>
+
+          <SettingsSection title="Stream Sources">
+            <div className="space-y-3">
+              {plugins.map((plugin) => (
+                <div key={plugin.id} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-[13px] font-semibold">
+                      <input
+                        checked={plugin.enabled}
+                        onChange={(event) => onUpdatePlugin(plugin.id, { enabled: event.target.checked })}
+                        type="checkbox"
+                        className="size-4 accent-[var(--mac-accent)]"
+                      />
+                      {plugin.name}
+                    </label>
+                    {plugin.enabled ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--mac-accent)]">On</span>
+                    ) : null}
+                  </div>
+                  <textarea
+                    value={plugin.streamUrlTemplate}
+                    onChange={(event) => onUpdatePlugin(plugin.id, { streamUrlTemplate: event.target.value })}
+                    rows={2}
+                    spellCheck={false}
+                    className="w-full resize-none rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 py-1.5 font-mono text-[11px] leading-4 outline-none focus:border-[var(--mac-accent)]"
+                  />
+                </div>
+              ))}
+            </div>
+          </SettingsSection>
+        </div>
+      ) : null}
+
+      {tab === 'advanced' ? (
+        <div className="mx-auto max-w-xl space-y-0">
+          <SettingsSection title="Custom Stream Profiles" first>
+            <SettingsHint>Create profiles with your own resolution, size, and caching rules.</SettingsHint>
+            <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-[12px] font-semibold">Profiles</div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdatePreferences({
+                      customProfiles: [...preferences.customProfiles, defaultCustomProfile()],
+                    })
+                  }
+                  className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold"
+                >
+                  <Plus size={12} />
+                  Add
+                </button>
+              </div>
+              <div className="space-y-3">
+                {preferences.customProfiles.map((profile) => (
+                  <CustomProfileEditor
+                    key={profile.id}
+                    profile={profile}
+                    onChange={(next) =>
+                      onUpdatePreferences({
+                        customProfiles: preferences.customProfiles.map((entry) => (entry.id === profile.id ? next : entry)),
+                      })
+                    }
+                    onRemove={() =>
+                      onUpdatePreferences({
+                        customProfiles: preferences.customProfiles.filter((entry) => entry.id !== profile.id),
+                      })
+                    }
+                  />
+                ))}
+                {!preferences.customProfiles.length ? (
+                  <p className="text-[11px] text-[var(--mac-secondary)]">No custom profiles yet.</p>
+                ) : null}
+              </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Layout">
+            <SettingsHint>Sidebar widths are saved automatically when you drag the panel dividers.</SettingsHint>
+            <button
+              type="button"
+              onClick={onResetPanelSizes}
+              className="h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+            >
+              Reset panel sizes
+            </button>
+          </SettingsSection>
+
+          <SettingsSection title="Keyboard Shortcuts">
+            <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2.5 text-[12px] leading-5 text-[var(--mac-secondary)]">
+              <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
+                <span>Focus search</span>
+                <span className="font-mono text-[11px] text-[var(--mac-text)]">⌘F / ⌘K</span>
+                <span>Open preferences</span>
+                <span className="font-mono text-[11px] text-[var(--mac-text)]">⌘,</span>
+                <span>Play top stream</span>
+                <span className="font-mono text-[11px] text-[var(--mac-text)]">Enter</span>
+                <span>Close panel / modal</span>
+                <span className="font-mono text-[11px] text-[var(--mac-text)]">Esc</span>
+                <span>Navigate library</span>
+                <span className="font-mono text-[11px] text-[var(--mac-text)]">Arrow keys</span>
+              </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Settings Backup">
+            <SettingsHint>Export preferences, plugins, layout, and filter presets. API keys are not included.</SettingsHint>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -195,107 +527,7 @@ export function PreferencesModal({
                 Import
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
-
-      {tab === 'plugins' ? (
-        <div className="mx-auto max-w-2xl space-y-4">
-          <TorboxAccountPanel apiKey={torboxApiKey} />
-          <label className="block">
-            <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[var(--mac-secondary)]">
-              <KeyRound size={13} />
-              Torbox API Key
-            </span>
-            <input
-              value={torboxApiKey}
-              onChange={(event) => onChangeTorboxApiKey(event.target.value)}
-              type="password"
-              className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[12px] outline-none focus:border-[var(--mac-accent)]"
-            />
-          </label>
-          <div className="space-y-3">
-            {plugins.map((plugin) => (
-              <div key={plugin.id} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-[13px] font-semibold">
-                    <input
-                      checked={plugin.enabled}
-                      onChange={(event) => onUpdatePlugin(plugin.id, { enabled: event.target.checked })}
-                      type="checkbox"
-                      className="size-4 accent-[var(--mac-accent)]"
-                    />
-                    {plugin.name}
-                  </label>
-                  {plugin.enabled ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-[var(--mac-accent)]">On</span>
-                  ) : null}
-                </div>
-                <textarea
-                  value={plugin.streamUrlTemplate}
-                  onChange={(event) => onUpdatePlugin(plugin.id, { streamUrlTemplate: event.target.value })}
-                  rows={2}
-                  spellCheck={false}
-                  className="w-full resize-none rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 py-1.5 font-mono text-[11px] leading-4 outline-none focus:border-[var(--mac-accent)]"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {tab === 'downloads' ? (
-        <DownloadDestinationsSettings
-          downloadConfig={downloadConfig}
-          jellyfinApiKey={jellyfinApiKey}
-          onUpdateDownloadConfig={onUpdateDownloadConfig}
-          onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
-          onChangeJellyfinApiKey={onChangeJellyfinApiKey}
-          onOpenJellyfinSignIn={onOpenJellyfinSignIn}
-        />
-      ) : null}
-
-      {tab === 'playback' ? (
-        <div className="mx-auto max-w-xl space-y-3">
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Auto play resolved streams</span>
-            <input
-              type="checkbox"
-              checked={preferences.autoPlayResolvedStreams}
-              onChange={(event) => onUpdatePreferences({ autoPlayResolvedStreams: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
-            />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Prefer cached results</span>
-            <input
-              type="checkbox"
-              checked={preferences.preferCachedResults}
-              onChange={(event) => onUpdatePreferences({ preferCachedResults: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
-            />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Auto-play next episode</span>
-            <input
-              type="checkbox"
-              checked={preferences.autoPlayNextEpisode}
-              onChange={(event) => onUpdatePreferences({ autoPlayNextEpisode: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
-            />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] px-3 py-2 text-[13px]">
-            <span>Download completion notifications</span>
-            <input
-              type="checkbox"
-              checked={preferences.downloadNotifications}
-              onChange={(event) => onUpdatePreferences({ downloadNotifications: event.target.checked })}
-              className="size-4 accent-[var(--mac-accent)]"
-            />
-          </label>
-          <p className="text-[11px] leading-4 text-[var(--mac-secondary)]">
-            macOS will ask for notification permission once. No Apple Developer certificate is required for local download alerts.
-          </p>
+          </SettingsSection>
         </div>
       ) : null}
     </AppModal>

@@ -17,6 +17,12 @@ function apiHeaders(path: string) {
   return headers
 }
 
+let apiRequestTimeoutMs = 15000
+
+export function setApiRequestTimeoutSeconds(seconds: number) {
+  apiRequestTimeoutMs = Math.max(5, seconds) * 1000
+}
+
 export async function loadJson<T>(url: string): Promise<T> {
   if (isTauriRuntime()) {
     const { invoke } = await import('@tauri-apps/api/core')
@@ -24,7 +30,7 @@ export async function loadJson<T>(url: string): Promise<T> {
   }
 
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 15000)
+  const timeout = window.setTimeout(() => controller.abort(), apiRequestTimeoutMs)
   try {
     const response = await fetch(`/api/fetch-json?url=${encodeURIComponent(url)}`, {
       headers: apiHeaders('/api/fetch-json'),

@@ -3,7 +3,10 @@ import {
   CINEMETA_SERIES_CATALOG_URLS,
   CURRENT_RELEASE_YEAR,
 } from './cinemeta'
+import { genreCatalogOptions } from './genres'
 import type { ContentType, LibraryCatalogId, Movie, MovieFilters } from '../types'
+
+export { filterGenres } from './genres'
 
 export type CatalogOptionId = (typeof catalogOptions)[number]['id'] | LibraryCatalogId
 
@@ -22,11 +25,7 @@ export const catalogOptions = [
   { id: 'topRated', group: 'Now', label: 'Top Rated', shortLabel: 'Top Rated' },
   { id: 'featured', group: 'Now', label: 'Featured', shortLabel: 'Featured' },
   { id: 'newReleases', group: 'Now', label: 'New Releases', shortLabel: 'New' },
-  { id: 'action', group: 'Genres', label: 'Action', shortLabel: 'Action' },
-  { id: 'comedy', group: 'Genres', label: 'Comedy', shortLabel: 'Comedy' },
-  { id: 'sciFi', group: 'Genres', label: 'Sci-Fi', shortLabel: 'Sci-Fi' },
-  { id: 'horror', group: 'Genres', label: 'Horror', shortLabel: 'Horror' },
-  { id: 'family', group: 'Genres', label: 'Family', shortLabel: 'Family' },
+  ...genreCatalogOptions,
 ] as const
 
 const catalogPresetFilters: Partial<Record<CatalogOptionId, Partial<MovieFilters>>> = {
@@ -40,28 +39,6 @@ export function effectiveMovieFilters(catalogId: string, filters: MovieFilters):
     minRating: filters.minRating || preset.minRating || '',
   }
 }
-
-export const filterGenres = [
-  'Action',
-  'Adventure',
-  'Animation',
-  'Biography',
-  'Comedy',
-  'Crime',
-  'Documentary',
-  'Drama',
-  'Family',
-  'Fantasy',
-  'History',
-  'Horror',
-  'Mystery',
-  'Romance',
-  'Sci-Fi',
-  'Sport',
-  'Thriller',
-  'War',
-  'Western',
-]
 
 export const filterYears = Array.from({ length: 120 }, (_, index) => String(CURRENT_RELEASE_YEAR - index))
 

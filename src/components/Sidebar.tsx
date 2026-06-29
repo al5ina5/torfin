@@ -24,7 +24,6 @@ type SidebarProps = {
   onCatalogChange: (id: string) => void
   onOpenPreferences: () => void
   onOpenDownloads: () => void
-  onResetSelection: () => void
   mobile?: boolean
   open?: boolean
   onClose?: () => void
@@ -46,7 +45,6 @@ export function Sidebar({
   onCatalogChange,
   onOpenPreferences,
   onOpenDownloads,
-  onResetSelection,
   mobile = false,
   open = false,
   onClose,
@@ -149,10 +147,7 @@ export function Sidebar({
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => handleNavigate(() => {
-                        onCatalogChange(option.id)
-                        onResetSelection()
-                      })}
+                      onClick={() => handleNavigate(() => onCatalogChange(option.id))}
                       className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
                         catalogId === option.id
                           ? 'bg-[var(--mac-accent-soft)] text-[var(--mac-accent-soft-text)]'

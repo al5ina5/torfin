@@ -1,8 +1,23 @@
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson } from './storage'
 import type { Movie, PlaybackProgress } from '../types'
 
-const MIN_PROGRESS_SECONDS = 30
-const COMPLETE_RATIO = 0.92
+type PlaybackProgressConfig = {
+  minProgressSeconds: number
+  completeRatio: number
+  maxEntries: number
+}
+
+const defaultConfig: PlaybackProgressConfig = {
+  minProgressSeconds: 30,
+  completeRatio: 0.92,
+  maxEntries: 40,
+}
+
+let progressConfig = { ...defaultConfig }
+
+export function setPlaybackProgressConfig(patch: Partial<PlaybackProgressConfig>) {
+  progressConfig = { ...progressConfig, ...patch }
+}
 
 export function loadPlaybackProgress(): PlaybackProgress[] {
   return loadStoredJson<PlaybackProgress[]>(STORAGE_KEYS.playbackProgress, [])
@@ -27,12 +42,12 @@ export function savePlaybackPosition(
   episode?: number,
 ) {
   if (!Number.isFinite(position) || !Number.isFinite(duration) || duration <= 0) return
-  if (position < MIN_PROGRESS_SECONDS) return
+  if (position < progressConfig.minProgressSeconds) return
 
   const key = progressKey(movie, season, episode)
   const entries = loadPlaybackProgress().filter((entry) => progressKey(entry.movie, entry.season, entry.episode) !== key)
 
-  if (position / duration >= COMPLETE_RATIO) {
+  if (position / duration >= progressConfig.completeRatio) {
     savePlaybackProgress(entries)
     return
   }
@@ -47,14 +62,14 @@ export function savePlaybackPosition(
     updatedAt: new Date().toISOString(),
     movie,
   })
-  savePlaybackProgress(entries.slice(0, 40))
+  savePlaybackProgress(entries.slice(0, progressConfig.maxEntries))
 }
 
 export function getPlaybackResumePosition(movie: Movie, season?: number, episode?: number) {
   const key = progressKey(movie, season, episode)
   const entry = loadPlaybackProgress().find((item) => progressKey(item.movie, item.season, item.episode) === key)
-  if (!entry || entry.position < MIN_PROGRESS_SECONDS) return null
-  if (entry.duration > 0 && entry.position / entry.duration >= COMPLETE_RATIO) return null
+  if (!entry || entry.position < progressConfig.minProgressSeconds) return null
+  if (entry.duration > 0 && entry.position / entry.duration >= progressConfig.completeRatio) return null
   return entry.position
 }
 

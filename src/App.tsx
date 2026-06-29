@@ -25,7 +25,7 @@ import { useJellyfinRefresh } from './hooks/useJellyfinRefresh'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSecrets } from './hooks/useSecrets'
-import { getApi, isTauriRuntime, loadJson, postApi, resolveStreamUrl } from './lib/api'
+import { getApi, isTauriRuntime, loadJson, postApi, resolveStreamUrl, setApiRequestTimeoutSeconds } from './lib/api'
 import { catalogPageUrl, enrichMovieFromMeta, metaUrl, normalizeCatalogItem, normalizeSeriesEpisodes, similarMoviesFromMeta, searchUrl } from './lib/cinemeta'
 import { allProfileOptions, builtinProfileList, findCustomProfile } from './lib/custom-profiles'
 import { allFilterPresets, createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
@@ -54,15 +54,16 @@ import {
   withDownloadTimestamp,
 } from './lib/downloads'
 import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
-import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery } from './lib/history'
+import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery, setRecentViewsLimit } from './lib/history'
 import { hydrateUrl, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
-import { applyThemeMode, loadThemeMode, saveThemeMode } from './lib/theme'
-import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies } from './lib/playback-progress'
+import { applyThemeMode, saveThemeMode } from './lib/theme'
+import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
+import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
 import { inspectMedia, needsTranscodeFallback, playbackUnavailableMessage, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
-import { STORAGE_KEYS, loadStoredJson, loadStoredString, saveStoredJson, saveStoredString } from './lib/storage'
+import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
 import { isInWatchlist, loadWatchlist, toggleWatchlist } from './lib/watchlist'
 import type {
   AppPreferences,
@@ -73,7 +74,6 @@ import type {
   DownloadSort,
   FilterPreset,
   JellyfinLibraryMatch,
-  LibraryViewMode,
   MediaInfo,
   Movie,
   PluginConfig,
@@ -83,31 +83,6 @@ import type {
 } from './types'
 
 const catalogPageSize = 100
-const compactResultsLimit = 4
-const defaultPreferences: AppPreferences = {
-  posterSize: 132,
-  showRatings: true,
-  showYears: true,
-  defaultProfile: 'netflix',
-  autoPlayResolvedStreams: true,
-  preferCachedResults: true,
-  customProfiles: [],
-  autoPlayNextEpisode: true,
-  downloadNotifications: true,
-  theme: 'system',
-  libraryViewMode: 'grid',
-}
-
-function loadPreferences() {
-  const stored = loadStoredJson<Partial<AppPreferences>>(STORAGE_KEYS.preferences, {})
-  return {
-    ...defaultPreferences,
-    ...stored,
-    customProfiles: stored.customProfiles ?? [],
-    theme: stored.theme ?? loadThemeMode(),
-    libraryViewMode: (stored.libraryViewMode === 'list' ? 'list' : 'grid') as LibraryViewMode,
-  }
-}
 
 const resultProfiles = builtinProfileList()
 
@@ -139,11 +114,6 @@ function loadSavedLayout() {
   }
 }
 
-function loadContentType(): ContentType {
-  const stored = loadStoredString(STORAGE_KEYS.contentType, 'movie')
-  return stored === 'series' ? 'series' : 'movie'
-}
-
 function loadDownloadConfig() {
   const stored = loadStoredJson(STORAGE_KEYS.downloadConfig, defaultDownloadConfig)
   return migrateDownloadConfig(stored, isTauriRuntime())
@@ -151,14 +121,22 @@ function loadDownloadConfig() {
 
 function initialBrowseState() {
   const route = readAppRoute()
+  const preferences = loadPreferences()
   const isDefaultHome =
     typeof window !== 'undefined' &&
     window.location.pathname === '/' &&
     !route.title &&
     !route.modal &&
     !route.searchQuery
+  if (isDefaultHome) {
+    return {
+      contentType: resolveStartupContentType(preferences),
+      catalogId: resolveStartupCatalogId(preferences),
+      query: '',
+    }
+  }
   return {
-    contentType: isDefaultHome ? loadContentType() : route.contentType,
+    contentType: route.contentType,
     catalogId: route.catalogId,
     query: route.searchQuery ?? '',
   }
@@ -196,7 +174,7 @@ export default function App() {
   const [downloadSort, setDownloadSort] = useState<DownloadSort>(loadStoredJson<DownloadSort>(STORAGE_KEYS.downloadSort, 'newest'))
   const [downloadSortOpen, setDownloadSortOpen] = useState(false)
   const [resultProfile, setResultProfile] = useState<ResultProfile>(preferences.defaultProfile)
-  const [resultsExpanded, setResultsExpanded] = useState(false)
+  const [resultsExpanded, setResultsExpanded] = useState(() => loadPreferences().expandStreamResultsByDefault)
   const [streams, setStreams] = useState<StreamResult[]>([])
   const [streamErrors, setStreamErrors] = useState<string[]>([])
   const [resolvingStreamKey, setResolvingStreamKey] = useState('')
@@ -231,6 +209,10 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const pendingAutoPlayRef = useRef(false)
+  const autoPlayedStreamKeyRef = useRef<string | null>(null)
+  const playbackGenerationRef = useRef(0)
+  const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
+  const startupSyncedRef = useRef(false)
 
   const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
   const {
@@ -376,22 +358,39 @@ export default function App() {
   }, [route.modal])
 
   useEffect(() => {
+    if (startupSyncedRef.current) return
+    startupSyncedRef.current = true
+
+    const urlRoute = readAppRoute()
+    const isDefaultHome =
+      window.location.pathname === '/' &&
+      !urlRoute.title &&
+      !urlRoute.modal &&
+      !urlRoute.searchQuery
+
+    if (!isDefaultHome) return
+    if (urlRoute.catalogId === initialBrowse.catalogId && urlRoute.contentType === initialBrowse.contentType) return
+
+    navigateBrowse(initialBrowse.contentType, initialBrowse.catalogId, true)
+  }, [initialBrowse.catalogId, initialBrowse.contentType, navigateBrowse])
+
+  useEffect(() => {
     if (route.contentType !== contentType) setContentType(route.contentType)
     if (route.searchQuery !== undefined) {
       if (route.searchQuery !== query) setQuery(route.searchQuery)
       return
     }
     if (route.catalogId !== catalogId) setCatalogId(route.catalogId)
-  }, [route.contentType, route.catalogId, route.searchQuery, contentType, catalogId, query])
+  }, [route.catalogId, route.contentType, route.searchQuery, catalogId, contentType, query])
 
   const prevRouteUrlRef = useRef(routeUrl)
   useEffect(() => {
-    const urlChanged = prevRouteUrlRef.current !== routeUrl
+    const previous = prevRouteUrlRef.current
     prevRouteUrlRef.current = routeUrl
-    if (urlChanged && route.searchQuery === undefined && query) {
+    if (previous !== routeUrl && previous.includes('/search') && route.searchQuery === undefined) {
       setQuery('')
     }
-  }, [routeUrl, route.searchQuery, query])
+  }, [routeUrl, route.searchQuery])
 
   useEffect(() => {
     if (!route.title) {
@@ -523,14 +522,29 @@ export default function App() {
     setHasMoreMovies(false)
   }, [catalogId, contentType, recentViews, watchlist])
   useEffect(() => {
+    if (!preferences.searchHistoryEnabled) return
     if (debouncedQuery.length >= 2) {
       setSearchHistory(recordSearchQuery(debouncedQuery))
     }
-  }, [debouncedQuery])
+  }, [debouncedQuery, preferences.searchHistoryEnabled])
   useEffect(() => { setStreams(streamData?.streams || []); setStreamErrors([...(streamData?.errors || []), ...(streamError ? [streamError instanceof Error ? streamError.message : 'Stream lookup failed'] : [])]) }, [streamData, streamError])
   useEffect(() => { if (serverStatuses) setDownloadJobs((current) => mergeServerDownloadJobs(current, serverStatuses)) }, [serverStatuses])
   useEffect(() => { saveStoredJson(STORAGE_KEYS.plugins, plugins); saveStoredJson(STORAGE_KEYS.preferences, preferences); saveStoredJson(STORAGE_KEYS.downloadConfig, downloadConfig); saveStoredJson(STORAGE_KEYS.downloadJobs, downloadJobs); saveStoredJson(STORAGE_KEYS.downloadSort, downloadSort); saveStoredJson(STORAGE_KEYS.layout, layout) }, [downloadConfig, downloadJobs, downloadSort, layout, plugins, preferences])
   useEffect(() => { saveStoredString(STORAGE_KEYS.contentType, contentType) }, [contentType])
+  useEffect(() => { saveStoredString(STORAGE_KEYS.lastCatalogId, catalogId) }, [catalogId])
+  useEffect(() => {
+    setPlaybackProgressConfig({
+      minProgressSeconds: preferences.resumeMinSeconds,
+      completeRatio: preferences.completeRatioPercent / 100,
+      maxEntries: preferences.continueWatchingLimit,
+    })
+  }, [preferences.completeRatioPercent, preferences.continueWatchingLimit, preferences.resumeMinSeconds])
+  useEffect(() => {
+    setRecentViewsLimit(preferences.recentViewsLimit)
+  }, [preferences.recentViewsLimit])
+  useEffect(() => {
+    setApiRequestTimeoutSeconds(preferences.apiRequestTimeoutSeconds)
+  }, [preferences.apiRequestTimeoutSeconds])
   useEffect(() => {
     if (selectedMovie?.type !== 'series') {
       setSelectedSeason(null)
@@ -555,7 +569,9 @@ export default function App() {
     navigateToTitle(selectedMovie, first.season, first.episode, true)
   }, [navigateToTitle, route.title, selectedMovie, seriesEpisodes])
   useEffect(() => { setResultProfile(preferences.defaultProfile) }, [preferences.defaultProfile])
-  useEffect(() => { setResultsExpanded(false) }, [resultProfile, selectedMovie?.id, selectedSeason, selectedEpisode])
+  useEffect(() => {
+    setResultsExpanded(preferences.expandStreamResultsByDefault)
+  }, [preferences.expandStreamResultsByDefault, resultProfile, selectedMovie?.id, selectedSeason, selectedEpisode])
 
   useEffect(() => {
     if (!selectedMovie) {
@@ -628,8 +644,9 @@ export default function App() {
   }, [catalogId, movies, movieFilters, query, searchData, shouldRemoteSearch])
   const compactStreams = useMemo(() => {
     const filtered = filterStreamsForProfile(streams, resultProfile, preferences.preferCachedResults, activeCustomProfile)
-    return filtered.length ? filtered.slice(0, compactResultsLimit) : streams.slice(0, compactResultsLimit)
-  }, [activeCustomProfile, preferences.preferCachedResults, resultProfile, streams])
+    const limit = preferences.compactResultsLimit
+    return filtered.length ? filtered.slice(0, limit) : streams.slice(0, limit)
+  }, [activeCustomProfile, preferences.compactResultsLimit, preferences.preferCachedResults, resultProfile, streams])
 
   const topStreamQuality = compactStreams[0] ? streamTargetQuality(compactStreams[0]) : 0
   const jellyfinItemUrl = jellyfinMatch ? jellyfinPlayUrl(effectiveDownloadConfig.jellyfinUrl, jellyfinMatch.itemId) : ''
@@ -683,13 +700,7 @@ export default function App() {
   async function handleImportSettingsFile(file: File) {
     try {
       const payload = parseSettingsExport(await file.text())
-      setPreferences({
-        ...defaultPreferences,
-        ...payload.preferences,
-        customProfiles: payload.preferences.customProfiles ?? [],
-        theme: payload.preferences.theme ?? 'system',
-        libraryViewMode: (payload.preferences.libraryViewMode === 'list' ? 'list' : 'grid') as LibraryViewMode,
-      })
+      setPreferences(normalizePreferences(payload.preferences))
       setPlugins(payload.plugins)
       setDownloadConfig(migrateDownloadConfig({ ...defaultDownloadConfig, ...payload.downloadConfig }, tauri))
       setLayout({
@@ -709,22 +720,27 @@ export default function App() {
     }
   }
 
+  function handleClearSearchHistory() {
+    clearSearchHistory()
+    setSearchHistory([])
+  }
+
+  function handleResetPanelSizes() {
+    setLayout(defaultLayout)
+  }
+
   function handleSearchPerson(name: string) {
     setQuery(name)
-    closeTitle()
+    navigateSearch(contentType, name)
     setSearchHistoryOpen(false)
     searchRef.current?.focus()
   }
 
   function handleContentTypeChange(next: ContentType) {
-    setContentType(next)
-    closeTitle()
     navigateBrowse(next, catalogId)
   }
 
   function handleCatalogChange(nextCatalogId: string) {
-    setCatalogId(nextCatalogId)
-    closeTitle()
     navigateBrowse(contentType, nextCatalogId)
   }
 
@@ -810,8 +826,11 @@ export default function App() {
       return
     }
     if (jellyfinMatch && topStreamQuality && jellyfinMatch.height && topStreamQuality <= jellyfinMatch.height) {
-      const proceed = window.confirm(`${selectedMovie.name} already exists in Jellyfin at ${jellyfinMatch.qualityLabel || 'current quality'}. Download anyway?`)
-      if (!proceed) return
+      if (preferences.jellyfinDuplicateAction === 'block') return
+      if (preferences.jellyfinDuplicateAction === 'ask') {
+        const proceed = window.confirm(`${selectedMovie.name} already exists in Jellyfin at ${jellyfinMatch.qualityLabel || 'current quality'}. Download anyway?`)
+        if (!proceed) return
+      }
     }
 
     const ready = readyDestinations(downloadConfig, tauri)
@@ -821,7 +840,7 @@ export default function App() {
       return
     }
 
-    if (shouldPromptDestinationPicker(downloadConfig, tauri)) {
+    if (preferences.alwaysConfirmDownloadDestination || shouldPromptDestinationPicker(downloadConfig, tauri)) {
       setPendingDownload({ stream, index })
       setDestinationPickerOpen(true)
       return
@@ -853,19 +872,24 @@ export default function App() {
       setPlaybackStatus('')
       return
     }
+    const generation = ++playbackGenerationRef.current
     setPlaybackStatus('Transcoding for AirPlay')
     setPlaybackError('')
+    setPlaybackUrl('')
     try {
       const hlsUrl = await startHlsTranscode(currentSourceUrl, selectedAudioIndex, selectedSubtitleIndex)
+      if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(hlsUrl)
       setPlaybackStatus('')
     } catch (error) {
+      if (generation !== playbackGenerationRef.current) return
       setPlaybackError(error instanceof Error ? error.message : 'Could not start fallback playback.')
       setPlaybackStatus('')
     }
   }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex])
 
   async function preparePlayback(sourceUrl: string, title: string, audioIndex: number | null, subtitleIndex: number | null, resumeAt: number | null = null) {
+    const generation = ++playbackGenerationRef.current
     setPlaybackStatus('Opening')
     setPlaybackError('')
     setPlaybackUrl('')
@@ -875,6 +899,7 @@ export default function App() {
     setSelectedSubtitleIndex(subtitleIndex)
 
     void inspectMedia(sourceUrl).then((info) => {
+      if (generation !== playbackGenerationRef.current) return
       setMediaInfo(info)
       if (audioIndex === null && info?.audioTracks[0]?.index !== undefined) {
         setSelectedAudioIndex(info.audioTracks[0].index)
@@ -882,6 +907,7 @@ export default function App() {
     })
 
     if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
+      if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(sourceUrl)
       setPlaybackStatus('')
       return
@@ -890,9 +916,11 @@ export default function App() {
     setPlaybackStatus(audioIndex === null && subtitleIndex === null ? 'Transcoding' : 'Preparing')
     try {
       const hlsUrl = await startHlsTranscode(sourceUrl, audioIndex, subtitleIndex)
+      if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(hlsUrl)
       setPlaybackStatus('')
     } catch (error) {
+      if (generation !== playbackGenerationRef.current) return
       setPlaybackStatus('')
       setPlaybackError(error instanceof Error ? error.message : 'Could not start transcoded playback.')
     }
@@ -964,19 +992,51 @@ export default function App() {
     [episodeSelection?.episode, episodeSelection?.season, selectedMovie],
   )
 
+  const proceedToNextEpisode = useCallback(
+    (next: { season: number; episode: number }) => {
+      if (!selectedMovie) return
+      pendingAutoPlayRef.current = true
+      setNextEpisodePrompt(null)
+      setSelectedSeason(next.season)
+      setSelectedEpisode(next.episode)
+      navigateToTitle(selectedMovie, next.season, next.episode, true)
+      setPlaybackUrl('')
+      setPlaybackStatus('Loading next episode')
+    },
+    [navigateToTitle, selectedMovie],
+  )
+
   const handlePlaybackEnded = useCallback(() => {
     if (!selectedMovie || selectedMovie.type !== 'series' || !preferences.autoPlayNextEpisode || !episodeSelection || !seriesEpisodes?.length) {
       return
     }
     const next = nextEpisode(seriesEpisodes, episodeSelection)
     if (!next) return
-    pendingAutoPlayRef.current = true
-    setSelectedSeason(next.season)
-    setSelectedEpisode(next.episode)
-    navigateToTitle(selectedMovie, next.season, next.episode, true)
-    setPlaybackUrl('')
-    setPlaybackStatus('Loading next episode')
-  }, [episodeSelection, preferences.autoPlayNextEpisode, selectedMovie, seriesEpisodes])
+    if (preferences.nextEpisodeCountdown > 0) {
+      setNextEpisodePrompt({ remaining: preferences.nextEpisodeCountdown, next })
+      return
+    }
+    proceedToNextEpisode(next)
+  }, [episodeSelection, preferences.autoPlayNextEpisode, preferences.nextEpisodeCountdown, proceedToNextEpisode, selectedMovie, seriesEpisodes])
+
+  useEffect(() => {
+    if (!nextEpisodePrompt) return
+    if (nextEpisodePrompt.remaining <= 0) {
+      proceedToNextEpisode(nextEpisodePrompt.next)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setNextEpisodePrompt((current) => {
+        if (!current) return null
+        if (current.remaining <= 1) {
+          proceedToNextEpisode(current.next)
+          return null
+        }
+        return { ...current, remaining: current.remaining - 1 }
+      })
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [nextEpisodePrompt, proceedToNextEpisode])
 
   useEffect(() => {
     if (!pendingAutoPlayRef.current || streamsLoading || !compactStreams.length) return
@@ -984,6 +1044,33 @@ export default function App() {
     setPlaybackStatus('')
     void playStream(compactStreams[0]!, 0)
   }, [compactStreams, streamsLoading, episodeSelection?.episode, episodeSelection?.season])
+
+  useEffect(() => {
+    autoPlayedStreamKeyRef.current = null
+  }, [selectedMovie?.id, selectedSeason, selectedEpisode])
+
+  useEffect(() => {
+    if (!preferences.autoPlayResolvedStreams) return
+    if (streamsLoading || !compactStreams.length || !selectedMovie) return
+    if (pendingAutoPlayRef.current) return
+    if (playbackUrl || resolvingStreamKey || playbackStatus) return
+
+    const key = `${selectedMovie.id}:${selectedSeason ?? ''}:${selectedEpisode ?? ''}`
+    if (autoPlayedStreamKeyRef.current === key) return
+
+    autoPlayedStreamKeyRef.current = key
+    void playStream(compactStreams[0]!, 0)
+  }, [
+    compactStreams,
+    playbackStatus,
+    playbackUrl,
+    preferences.autoPlayResolvedStreams,
+    resolvingStreamKey,
+    selectedEpisode,
+    selectedMovie,
+    selectedSeason,
+    streamsLoading,
+  ])
 
   async function downloadSeason() {
     if (!selectedMovie || selectedMovie.type !== 'series' || selectedSeason === null || !seriesEpisodes?.length) return
@@ -1053,6 +1140,7 @@ export default function App() {
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
+    setNextEpisodePrompt(null)
   }
 
   function handleEpisodeChange(episode: number) {
@@ -1179,7 +1267,6 @@ export default function App() {
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
-            onResetSelection={handleCloseInspector}
           />
         ) : null}
 
@@ -1202,7 +1289,6 @@ export default function App() {
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
-            onResetSelection={handleCloseInspector}
           />
         ) : null}
 
@@ -1253,7 +1339,7 @@ export default function App() {
                 placeholder="Search"
                 className="h-8 w-full rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] pl-8 pr-2 text-[13px] outline-none transition placeholder:text-[var(--mac-tertiary)] focus:border-[color-mix(in_srgb,var(--mac-accent)_40%,var(--mac-border))] focus:ring-2 focus:ring-[var(--mac-accent-soft)]"
               />
-              {searchHistoryOpen && searchHistory.length && !query.trim() ? (
+              {searchHistoryOpen && preferences.searchHistoryEnabled && searchHistory.length && !query.trim() ? (
                 <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-elevated)] py-1 shadow-lg">
                   {searchHistory.map((entry) => (
                     <button
@@ -1395,6 +1481,8 @@ export default function App() {
           onPlaybackError={handlePlaybackFailure}
           onPlaybackTimeUpdate={handlePlaybackTimeUpdate}
           onPlaybackEnded={handlePlaybackEnded}
+          nextEpisodePrompt={nextEpisodePrompt}
+          onCancelNextEpisode={() => setNextEpisodePrompt(null)}
           resolvingKey={resolvingStreamKey}
           downloadingKey={downloadingStreamKey}
           onChooseAudio={(value) => { void chooseAudioTrack(value) }}
@@ -1471,6 +1559,8 @@ export default function App() {
           onOpenJellyfinSignIn={openJellyfinSignIn}
           onExportSettings={handleExportSettings}
           onImportSettings={handleImportSettings}
+          onClearSearchHistory={handleClearSearchHistory}
+          onResetPanelSizes={handleResetPanelSizes}
         />
         <input
           ref={importInputRef}

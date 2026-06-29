@@ -101,15 +101,38 @@ const jsonFetchInflight = new Map()
 
 if (!existsSync(aria2SessionFile)) writeFileSync(aria2SessionFile, '')
 
+const prewarmGenreLabels = [
+  'Action',
+  'Adventure',
+  'Animation',
+  'Biography',
+  'Comedy',
+  'Crime',
+  'Documentary',
+  'Drama',
+  'Family',
+  'Fantasy',
+  'Film-Noir',
+  'History',
+  'Horror',
+  'Music',
+  'Musical',
+  'Mystery',
+  'Romance',
+  'Sci-Fi',
+  'Sport',
+  'Thriller',
+  'War',
+  'Western',
+]
+
 const prewarmJsonUrls = [
   'https://v3-cinemeta.strem.io/catalog/movie/top.json',
   'https://v3-cinemeta.strem.io/catalog/movie/imdbRating.json',
   `https://v3-cinemeta.strem.io/catalog/movie/year/genre=${encodeURIComponent(String(currentReleaseYear))}.json`,
-  'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Action.json',
-  'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Comedy.json',
-  'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Sci-Fi.json',
-  'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Horror.json',
-  'https://v3-cinemeta.strem.io/catalog/movie/top/genre=Family.json',
+  ...prewarmGenreLabels.map(
+    (genre) => `https://v3-cinemeta.strem.io/catalog/movie/top/genre=${encodeURIComponent(genre)}.json`,
+  ),
 ]
 
 function loadJobs() {

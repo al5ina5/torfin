@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   recentViews: 'torfin.recent-views',
   searchHistory: 'torfin.search-history',
   filterPresets: 'torfin.filter-presets',
+  lastCatalogId: 'torfin.last-catalog-id',
 } as const
 
 function hasLocalStorage() {

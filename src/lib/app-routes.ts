@@ -24,7 +24,7 @@ export type AppRoute = {
 /** @deprecated Use AppRoute instead */
 export type AppModalRoute = AppRoute
 
-const SETTINGS_TABS: PreferencesTab[] = ['general', 'plugins', 'downloads', 'playback']
+const SETTINGS_TABS: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
 
 const CATALOG_IDS = new Set<string>([
   ...libraryCatalogOptions.map((option) => option.id),
@@ -202,26 +202,27 @@ function normalizeAppRoute(value: unknown): AppRoute | null {
 
 export function readAppRoute(): AppRoute {
   if (typeof window === 'undefined') return defaultAppRoute()
-  const fromState = normalizeAppRoute(window.history.state?.appRoute)
+
   const fromUrl = parseAppRoute(window.location.pathname, window.location.search)
-  if (!fromState) return fromUrl
+  const fromState = normalizeAppRoute(window.history.state?.appRoute)
 
   if (fromUrl.modal) {
-    return { ...fromState, modal: fromUrl.modal }
+    if (!fromState) return fromUrl
+    return {
+      ...fromState,
+      modal: fromUrl.modal,
+      title: fromState.title,
+      searchQuery: fromState.searchQuery,
+    }
   }
 
-  const urlHasBrowseOrTitle =
-    window.location.pathname !== '/' ||
-    Boolean(fromUrl.title) ||
-    Boolean(fromUrl.searchQuery) ||
-    fromUrl.contentType !== 'movie' ||
-    fromUrl.catalogId !== 'trending'
-
-  if (urlHasBrowseOrTitle) {
-    return { ...fromUrl, modal: fromState.modal }
+  if (fromUrl.title || fromUrl.searchQuery || fromUrl.catalogId !== 'trending' || fromUrl.contentType !== 'movie') {
+    return fromUrl
   }
 
-  return fromState
+  if (fromState && !fromState.modal) return fromState
+
+  return fromUrl
 }
 
 export function routesEqual(a: AppRoute, b: AppRoute) {
@@ -231,14 +232,14 @@ export function routesEqual(a: AppRoute, b: AppRoute) {
 export function writeAppRoute(route: AppRoute, replace = false) {
   if (typeof window === 'undefined') return
   const url = appRouteToUrl(route)
-  const current = `${window.location.pathname}${window.location.search}`
-  if (current === url) {
-    if (replace) {
-      window.history.replaceState({ appRoute: route }, '', url)
-    }
-    return
-  }
-  if (replace) {
+  const currentUrl = `${window.location.pathname}${window.location.search}`
+  const currentState = normalizeAppRoute(window.history.state?.appRoute)
+  const sameUrl = currentUrl === url
+  const sameRoute = currentState && JSON.stringify(currentState) === JSON.stringify(route)
+
+  if (sameUrl && sameRoute) return
+
+  if (replace || sameUrl) {
     window.history.replaceState({ appRoute: route }, '', url)
   } else {
     window.history.pushState({ appRoute: route }, '', url)

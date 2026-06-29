@@ -111,6 +111,8 @@ fn start_hls_transcode_inner(
 
     args.extend([
         "-dn".to_string(),
+        "-max_muxing_queue_size".to_string(),
+        "1024".to_string(),
         "-c:v".to_string(),
         "libx264".to_string(),
         "-preset".to_string(),

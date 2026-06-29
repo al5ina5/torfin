@@ -88,6 +88,8 @@ function buildFfmpegArgs(sourceUrl, audioStreamIndex, subtitleStreamIndex, segme
 
   args.push(
     '-dn',
+    '-max_muxing_queue_size',
+    '1024',
     '-c:v',
     'libx264',
     '-preset',
@@ -118,9 +120,9 @@ function buildFfmpegArgs(sourceUrl, audioStreamIndex, subtitleStreamIndex, segme
     '-hls_list_size',
     '0',
     '-hls_playlist_type',
-    'event',
+    'vod',
     '-hls_flags',
-    'independent_segments+program_date_time',
+    'independent_segments',
     '-hls_segment_filename',
     segmentPattern,
     playlist,
