@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { fetchTorboxAccount, isVideoFilename, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
-import { serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
+import { isFfmpegAvailable, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -1412,6 +1412,7 @@ async function handleApi(request, response, pathname) {
       jobs: Object.keys(jobs).length,
       aria2c: commandExists('aria2c'),
       wget: commandExists('wget'),
+      ffmpeg: isFfmpegAvailable(),
       downloadDir: defaultDownloadDir,
     })
     return

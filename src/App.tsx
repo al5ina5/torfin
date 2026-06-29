@@ -60,7 +60,7 @@ import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from '
 import { applyThemeMode, saveThemeMode } from './lib/theme'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
-import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { canRetryPlaybackWithTranscode, inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
@@ -867,28 +867,40 @@ export default function App() {
   }
 
   const handlePlaybackFailure = useCallback(async () => {
-    if (!playbackUrl) return
-    if (!needsTranscodeFallback(currentSourceUrl, playbackUrl)) {
+    let sourceUrl = currentSourceUrl
+    if (!canRetryPlaybackWithTranscode(sourceUrl) && activePlaybackStreamRef.current) {
+      try {
+        setPlaybackStatus('Refreshing link')
+        sourceUrl = await refreshActiveSourceUrl()
+        setCurrentSourceUrl(sourceUrl)
+      } catch {
+        // fall through to the generic error below
+      }
+    }
+
+    if (!canRetryPlaybackWithTranscode(sourceUrl)) {
       setPlaybackUrl('')
       setPlaybackError(playbackUnavailableMessage())
       setPlaybackStatus('')
       return
     }
+
     const generation = ++playbackGenerationRef.current
-    setPlaybackStatus('Transcoding for AirPlay')
+    const isDirectPlayback = needsTranscodeFallback(sourceUrl, playbackUrl)
+    setPlaybackStatus(isDirectPlayback ? 'Transcoding' : 'Retrying playback')
     setPlaybackError('')
     setPlaybackUrl('')
     try {
-      const hlsUrl = await startTranscodeWithRefresh(currentSourceUrl, selectedAudioIndex, selectedSubtitleIndex)
+      const hlsUrl = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(hlsUrl)
+      setPlaybackUrl(resolvePlaybackUrl(hlsUrl))
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackError(error instanceof Error ? error.message : 'Could not start fallback playback.')
+      setPlaybackError(error instanceof Error ? error.message : playbackUnavailableMessage())
       setPlaybackStatus('')
     }
-  }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex])
+  }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex, torboxApiKey])
 
   async function refreshActiveSourceUrl() {
     const active = activePlaybackStreamRef.current
@@ -933,7 +945,7 @@ export default function App() {
 
     if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(sourceUrl)
+      setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
       setPlaybackStatus('')
       return
     }
@@ -942,7 +954,7 @@ export default function App() {
     try {
       const hlsUrl = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex)
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(hlsUrl)
+      setPlaybackUrl(resolvePlaybackUrl(hlsUrl))
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isBrowserPlayableUrl, needsTranscodeFallback, shouldTranscodeDirectly } from '../playback'
+import { isBrowserPlayableUrl, isTorboxCdnUrl, needsTranscodeFallback, shouldTranscodeDirectly } from '../playback'
 
 describe('isBrowserPlayableUrl', () => {
   it('treats common browser formats as playable', () => {
@@ -15,6 +15,7 @@ describe('isBrowserPlayableUrl', () => {
 
   it('treats extensionless Torbox links as not playable', () => {
     expect(isBrowserPlayableUrl('https://cdn.example.com/download/abc123')).toBe(false)
+    expect(isTorboxCdnUrl('https://nexus-157.nord.tb-cdn.st/dld/abc?token=xyz')).toBe(true)
   })
 })
 
@@ -25,6 +26,11 @@ describe('shouldTranscodeDirectly', () => {
 
   it('keeps direct playback for mp4 when no tracks are selected', () => {
     expect(shouldTranscodeDirectly('https://cdn.example.com/movie.mp4', null, null)).toBe(false)
+  })
+
+  it('always transcodes Torbox CDN links in the browser', () => {
+    expect(shouldTranscodeDirectly('https://nexus-157.nord.tb-cdn.st/dld/abc?token=xyz', null, null)).toBe(true)
+    expect(shouldTranscodeDirectly('https://nexus-157.nord.tb-cdn.st/dld/abc.mp4?token=xyz', null, null)).toBe(true)
   })
 })
 

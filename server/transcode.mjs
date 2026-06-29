@@ -54,6 +54,10 @@ function findFfmpeg() {
   return null
 }
 
+export function isFfmpegAvailable() {
+  return findFfmpeg() !== null
+}
+
 function isRemoteUrl(url) {
   return /^https?:\/\//i.test(url)
 }

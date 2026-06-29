@@ -4,6 +4,20 @@ import type { MediaInfo } from '../types'
 const BROWSER_PLAYABLE_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.m3u8', '.webm']
 const NON_BROWSER_EXTENSIONS = ['.mkv', '.avi']
 
+export function isTorboxCdnUrl(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase().includes('tb-cdn.st')
+  } catch {
+    return false
+  }
+}
+
+export function resolvePlaybackUrl(url: string) {
+  if (!url || url.startsWith('http://') || url.startsWith('https://')) return url
+  if (typeof window === 'undefined') return url
+  return new URL(url, window.location.href).href
+}
+
 export function isBrowserPlayableUrl(url: string) {
   const path = (() => {
     try {
@@ -56,7 +70,13 @@ export function needsTranscodeFallback(sourceUrl: string, playbackUrl: string) {
 
 export function shouldTranscodeDirectly(sourceUrl: string, audioIndex: number | null, subtitleIndex: number | null) {
   if (audioIndex !== null || subtitleIndex !== null) return true
-  return !isBrowserPlayableUrl(sourceUrl)
+  if (!isBrowserPlayableUrl(sourceUrl)) return true
+  if (!isTauriRuntime() && isTorboxCdnUrl(sourceUrl)) return true
+  return false
+}
+
+export function canRetryPlaybackWithTranscode(sourceUrl: string) {
+  return Boolean(sourceUrl?.trim())
 }
 
 export function isRetriablePlaybackError(error: unknown) {
