@@ -1,7 +1,8 @@
 import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
-import type { Movie } from '../types'
+import { jellyfinLibraryKey } from '../lib/jellyfin-library'
+import type { JellyfinLibraryMatch, Movie } from '../types'
 import { MovieEmptyState } from './MovieEmptyState'
 import { MovieGridSkeleton } from './MovieGridSkeleton'
 import { MoviePoster } from './MoviePoster'
@@ -13,6 +14,7 @@ type MovieGridProps = {
   catalogId?: string
   contentKey?: string
   watchlistIds?: Set<string>
+  libraryMatches?: Record<string, JellyfinLibraryMatch | null>
   posterSize: number
   showYears: boolean
   showRatings: boolean
@@ -25,6 +27,9 @@ type MovieGridProps = {
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
   onClearFilters?: () => void
+  onOpenSettings?: () => void
+  onBrowseTrending?: () => void
+  pullRefreshHandlers?: Record<string, unknown>
 }
 
 export function MovieGrid({
@@ -34,6 +39,7 @@ export function MovieGrid({
   catalogId,
   contentKey = '',
   watchlistIds,
+  libraryMatches,
   posterSize,
   showYears,
   showRatings,
@@ -46,6 +52,9 @@ export function MovieGrid({
   onSelectMovie,
   onToggleWatchlist,
   onClearFilters,
+  onOpenSettings,
+  onBrowseTrending,
+  pullRefreshHandlers,
 }: MovieGridProps) {
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
@@ -57,22 +66,26 @@ export function MovieGrid({
     <div
       ref={scrollRef}
       className={`app-movie-scroll min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded${showEmpty ? ' flex flex-col' : ''}`}
+      {...pullRefreshHandlers}
     >
       {loading ? (
         <MovieGridSkeleton posterSize={posterSize} />
       ) : movies.length ? (
         <div
           key={contentKey}
-          className="grid gap-x-4 gap-y-5"
+          className="catalog-grid grid gap-x-4 gap-y-5"
           style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${posterSize}px, 1fr))` }}
         >
           {movies.map((movie, index) => {
             const progress = progressById.get(`${movie.type}:${movie.id}`)
             const inWatchlist = watchlistIds?.has(`${movie.type}:${movie.id}`)
+            const libraryMatch = libraryMatches?.[jellyfinLibraryKey(movie.type, movie.id)]
             const isFocused = focusedMovieIndex === index
+            const isSelected = selectedMovieId === movie.id && focusedMovieIndex === index
             return (
               <div
                 key={`${movie.type}:${movie.id}`}
+                data-catalog-index={index}
                 className="movie-item-enter group relative min-w-0"
                 style={{ animationDelay: `${Math.min(index, 28) * 16}ms` }}
               >
@@ -82,13 +95,20 @@ export function MovieGrid({
                   className="w-full rounded-lg text-left outline-none active:scale-[0.98] transition-transform duration-100"
                 >
                   <div
-                    className={`relative aspect-[2/3] overflow-hidden rounded-lg border bg-[var(--mac-control)] shadow-sm transition-[border-color,box-shadow] duration-150 ${
-                      selectedMovieId === movie.id || isFocused
-                        ? 'border-[var(--mac-accent)] ring-2 ring-[var(--mac-accent)]/30'
-                        : 'border-[var(--mac-border)] group-hover:border-[var(--mac-border-strong)]'
+                    className={`relative aspect-[2/3] rounded-lg border bg-[var(--mac-control)] shadow-sm transition-[border-color,box-shadow] duration-150 ${
+                      isFocused || isSelected
+                        ? 'movie-focus-ring'
+                        : 'overflow-hidden border-[var(--mac-border)] group-hover:border-[var(--mac-border-strong)]'
                     }`}
                   >
-                    <MoviePoster src={movie.poster} priority={index < 24} />
+                    <div className="movie-poster-clip">
+                      <MoviePoster src={movie.poster} priority={index < 24} />
+                    </div>
+                    {libraryMatch ? (
+                      <span className="absolute left-2 top-2 rounded-md border border-emerald-500/30 bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">
+                        {libraryMatch.qualityLabel || 'Library'}
+                      </span>
+                    ) : null}
                     {progress && catalogId === 'continue' ? (
                       <div className="absolute inset-x-2 bottom-10 h-1 overflow-hidden rounded-full bg-black/40">
                         <div
@@ -149,7 +169,12 @@ export function MovieGrid({
           ) : null}
         </div>
       ) : showEmpty ? (
-        <MovieEmptyState catalogId={catalogId} onClearFilters={onClearFilters} />
+        <MovieEmptyState
+          catalogId={catalogId}
+          onClearFilters={onClearFilters}
+          onOpenSettings={onOpenSettings}
+          onBrowseTrending={onBrowseTrending}
+        />
       ) : null}
     </div>
   )

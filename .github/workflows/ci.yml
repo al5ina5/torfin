@@ -34,6 +34,20 @@ jobs:
       - name: Integration tests
         run: npm run test:transcode && npm run test:web-downloads && npm run test:server-api
 
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: UI tests
+        run: |
+          PORT=3026 node server.mjs &
+          echo $! > server.pid
+          for i in $(seq 1 45); do
+            curl -sf http://127.0.0.1:3026/api/health && break
+            sleep 1
+          done
+          UI_SMOKE_URL=http://127.0.0.1:3026/ npm run test:ui:all
+          kill "$(cat server.pid)" || true
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update

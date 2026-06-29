@@ -24,6 +24,7 @@ type VideoPlayerProps = {
   onError?: () => void
   onTimeUpdate?: (currentTime: number, duration: number) => void
   onEnded?: () => void
+  onBufferingChange?: (buffering: boolean) => void
 }
 
 const SCRUB_SEEK_DEBOUNCE_MS = 300

@@ -1,32 +1,40 @@
+import { useEffect } from 'react'
 import { Toaster } from 'sonner'
 
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { useResolvedTheme } from '../hooks/useResolvedTheme'
+import { installAppToastStyles } from '../lib/install-app-toast-styles'
+import {
+  APP_TOAST_BASE_OPTIONS,
+  APP_TOAST_CLASS_NAMES,
+  appToasterStyle,
+} from '../lib/toast-config'
 
 export function AppToaster() {
   const theme = useResolvedTheme()
   const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const toastWidth = isDesktop
+    ? 'min(480px, calc(100vw - 48px))'
+    : 'min(420px, calc(100vw - 24px))'
+
+  useEffect(() => {
+    installAppToastStyles()
+  }, [])
 
   return (
     <Toaster
       theme={theme}
-      position={isDesktop ? 'bottom-center' : 'top-center'}
+      position="bottom-center"
+      richColors={false}
       expand
       closeButton
       visibleToasts={isDesktop ? 5 : 3}
-      gap={10}
+      gap={8}
       offset={isDesktop ? 20 : 12}
+      style={appToasterStyle(toastWidth)}
       toastOptions={{
-        classNames: {
-          toast: 'app-toast',
-          title: 'app-toast-title',
-          description: 'app-toast-description',
-          closeButton: 'app-toast-close',
-          success: 'app-toast-success',
-          error: 'app-toast-error',
-          warning: 'app-toast-warning',
-          info: 'app-toast-info',
-        },
+        ...APP_TOAST_BASE_OPTIONS,
+        classNames: APP_TOAST_CLASS_NAMES,
       }}
     />
   )

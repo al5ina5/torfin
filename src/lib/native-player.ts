@@ -1,8 +1,15 @@
 import { isTauriRuntime } from './api'
+import type { MacNativePlayer } from '../types'
 
 export type NativePlayerResult = {
   player: string
   mode: 'external' | 'window'
+}
+
+export type NativePlayerOption = {
+  id: MacNativePlayer
+  label: string
+  available: boolean
 }
 
 export function isMacTauri() {
@@ -20,7 +27,12 @@ export async function supportsNativePlayer() {
   }
 }
 
-export async function openNativePlayer(url: string, title: string) {
+export async function listNativePlayers() {
   const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<NativePlayerResult>('open_native_player', { url, title })
+  return invoke<NativePlayerOption[]>('list_native_players')
+}
+
+export async function openNativePlayer(url: string, title: string, player?: MacNativePlayer) {
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<NativePlayerResult>('open_native_player', { url, title, player: player ?? null })
 }

@@ -149,7 +149,7 @@ export default defineConfig({
             const refused = cause?.code === 'ECONNREFUSED'
             sendJson(response, refused ? 503 : 500, {
               error: refused
-                ? `Download API is not running at ${API_BACKEND}. Start it with: npm run dev:full`
+                ? `Download API is not running at ${API_BACKEND}. Start it with: yarn dev`
                 : error instanceof Error
                   ? error.message
                   : 'API proxy failed',

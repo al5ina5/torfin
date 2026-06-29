@@ -1,0 +1,186 @@
+/* Loaded after Sonner's injected stylesheet (see installAppToastStyles). */
+
+[data-sonner-toaster] {
+  --width: min(420px, calc(100vw - 24px));
+  --border-radius: 999px;
+  --toast-close-button-start: unset;
+  --toast-close-button-end: 12px;
+  --toast-close-button-transform: translateY(-50%);
+  --toast-icon-margin-start: 0;
+  --toast-icon-margin-end: 8px;
+  font-family: inherit;
+}
+
+@media (min-width: 1024px) {
+  [data-sonner-toaster] {
+    --width: min(480px, calc(100vw - 48px));
+  }
+}
+
+[data-sonner-toaster][data-y-position='bottom'] {
+  bottom: calc(12px + var(--app-safe-bottom, 0px)) !important;
+}
+
+@media (min-width: 1024px) {
+  [data-sonner-toaster][data-y-position='bottom'] {
+    bottom: 20px !important;
+  }
+}
+
+/* Neutral glass surface for every toast type (icon color is the only variant). */
+[data-sonner-toaster][data-sonner-theme='light'],
+[data-sonner-toaster][data-sonner-theme='dark'] {
+  --normal-bg: color-mix(in srgb, var(--mac-elevated) 92%, transparent) !important;
+  --normal-bg-hover: var(--mac-control-hover) !important;
+  --normal-border: var(--mac-border) !important;
+  --normal-border-hover: var(--mac-border-strong) !important;
+  --normal-text: var(--mac-text) !important;
+
+  --success-bg: var(--normal-bg) !important;
+  --success-border: var(--normal-border) !important;
+  --success-text: var(--normal-text) !important;
+
+  --info-bg: var(--normal-bg) !important;
+  --info-border: var(--normal-border) !important;
+  --info-text: var(--normal-text) !important;
+
+  --warning-bg: var(--normal-bg) !important;
+  --warning-border: var(--normal-border) !important;
+  --warning-text: var(--normal-text) !important;
+
+  --error-bg: var(--normal-bg) !important;
+  --error-border: var(--normal-border) !important;
+  --error-text: var(--normal-text) !important;
+}
+
+[data-sonner-toast].app-toast,
+[data-sonner-toast][data-styled='true'].app-toast,
+[data-rich-colors='true'][data-sonner-toast].app-toast,
+[data-sonner-toast].app-toast-success,
+[data-sonner-toast].app-toast-error,
+[data-sonner-toast].app-toast-warning,
+[data-sonner-toast].app-toast-info {
+  padding: 6px 34px 6px 14px !important;
+  gap: 6px !important;
+  align-items: center !important;
+  border-width: 0.5px !important;
+  border-radius: var(--border-radius, 999px) !important;
+  font-size: 12.5px !important;
+  background: color-mix(in srgb, var(--mac-elevated) 92%, transparent) !important;
+  border-color: var(--mac-border) !important;
+  color: var(--mac-text) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--mac-border) 70%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.04) !important;
+}
+
+html[data-theme='dark'] [data-sonner-toast].app-toast,
+html[data-theme='dark'] [data-sonner-toast][data-styled='true'].app-toast {
+  box-shadow:
+    0 0 0 0.5px color-mix(in srgb, var(--mac-border) 80%, transparent),
+    0 4px 16px rgba(0, 0, 0, 0.28) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme='system'] [data-sonner-toast].app-toast,
+  html[data-theme='system'] [data-sonner-toast][data-styled='true'].app-toast {
+    box-shadow:
+      0 0 0 0.5px color-mix(in srgb, var(--mac-border) 80%, transparent),
+      0 4px 16px rgba(0, 0, 0, 0.28) !important;
+  }
+}
+
+[data-sonner-toast].app-toast [data-description] {
+  color: var(--mac-secondary) !important;
+}
+
+[data-sonner-toast].app-toast [data-icon] {
+  height: 14px !important;
+  width: 14px !important;
+}
+
+[data-sonner-toast].app-toast [data-content] {
+  gap: 0 !important;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+[data-sonner-toast].app-toast [data-close-button],
+[data-sonner-toast].app-toast .app-toast-close {
+  top: 50% !important;
+  left: auto !important;
+  right: 10px !important;
+  height: 18px !important;
+  width: 18px !important;
+  border-width: 0 !important;
+  background: transparent !important;
+  color: var(--mac-tertiary) !important;
+  border-radius: 999px !important;
+  opacity: 0.72;
+  transform: translateY(-50%) !important;
+}
+
+[data-sonner-toast].app-toast [data-close-button]:hover,
+[data-sonner-toast].app-toast .app-toast-close:hover {
+  background: var(--mac-control) !important;
+  border-color: transparent !important;
+  color: var(--mac-secondary) !important;
+  opacity: 1;
+}
+
+[data-sonner-toast] .app-toast-title {
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.01em;
+}
+
+[data-sonner-toast] .app-toast-description {
+  font-size: 11.5px !important;
+  line-height: 1.25 !important;
+  opacity: 0.92;
+}
+
+[data-sonner-toast].app-toast-success [data-icon] {
+  color: #34c759;
+}
+
+[data-sonner-toast].app-toast-error [data-icon] {
+  color: #ff3b30;
+}
+
+[data-sonner-toast].app-toast-warning [data-icon] {
+  color: #ff9500;
+}
+
+[data-sonner-toast].app-toast-info [data-icon] {
+  color: var(--mac-accent);
+}
+
+html[data-theme='dark'] [data-sonner-toast].app-toast-success [data-icon] {
+  color: #30d158;
+}
+
+html[data-theme='dark'] [data-sonner-toast].app-toast-error [data-icon] {
+  color: #ff453a;
+}
+
+html[data-theme='dark'] [data-sonner-toast].app-toast-warning [data-icon] {
+  color: #ff9f0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme='system'] [data-sonner-toast].app-toast-success [data-icon] {
+    color: #30d158;
+  }
+
+  html[data-theme='system'] [data-sonner-toast].app-toast-error [data-icon] {
+    color: #ff453a;
+  }
+
+  html[data-theme='system'] [data-sonner-toast].app-toast-warning [data-icon] {
+    color: #ff9f0a;
+  }
+}

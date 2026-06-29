@@ -1,13 +1,15 @@
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { defaultCustomProfile } from '../lib/custom-profiles'
-import { isMacTauri } from '../lib/native-player'
+import { isMacTauri, listNativePlayers, type NativePlayerOption } from '../lib/native-player'
 import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
 import type {
   AppPreferences,
   CustomStreamProfile,
   DownloadConfig,
   JellyfinDuplicateAction,
+  MacNativePlayer,
   NextEpisodeCountdownSeconds,
   PluginConfig,
   PreferencesTab,
@@ -45,13 +47,21 @@ type PreferencesModalProps = {
   onChangeTorboxApiKey: (value: string) => void
   onChangeJellyfinApiKey: (value: string) => void
   onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
+  onImportJellyfinWatchlist?: () => void
   onExportSettings: () => void
   onImportSettings: () => void
   onClearSearchHistory: () => void
   onResetPanelSizes: () => void
 }
 
-const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
+const macNativePlayerFallback: NativePlayerOption[] = [
+  { id: 'auto', label: 'Automatic', available: true },
+  { id: 'avplayer', label: 'AVPlayer (built-in window)', available: true },
+  { id: 'quicktime', label: 'QuickTime Player', available: true },
+  { id: 'mpv', label: 'mpv', available: false },
+  { id: 'iina', label: 'IINA', available: false },
+  { id: 'vlc', label: 'VLC', available: false },
+]
 
 const preferenceTabLabels: Record<PreferencesTab, string> = {
   general: 'General',
@@ -60,6 +70,8 @@ const preferenceTabLabels: Record<PreferencesTab, string> = {
   plugins: 'Plugins',
   advanced: 'Advanced',
 }
+
+const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'plugins', 'advanced']
 
 const startupCatalogOptions: Array<{ id: StartupCatalogId; label: string }> = [
   { id: 'lastUsed', label: 'Last used' },
@@ -87,11 +99,21 @@ export function PreferencesModal({
   onChangeTorboxApiKey,
   onChangeJellyfinApiKey,
   onOpenJellyfinSignIn,
+  onImportJellyfinWatchlist,
   onExportSettings,
   onImportSettings,
   onClearSearchHistory,
   onResetPanelSizes,
 }: PreferencesModalProps) {
+  const [nativePlayers, setNativePlayers] = useState<NativePlayerOption[]>([])
+
+  useEffect(() => {
+    if (!open || tab !== 'playback' || !isMacTauri()) return
+    void listNativePlayers()
+      .then(setNativePlayers)
+      .catch(() => setNativePlayers([]))
+  }, [open, tab])
+
   return (
     <AppModal
       open={open}
@@ -244,10 +266,28 @@ export function PreferencesModal({
             <SettingsSection title="macOS Player" first>
               <SettingsToggle
                 label="Use native macOS player"
-                hint="Open streams in IINA, mpv, or VLC instead of the in-app web player. Handles MKV, multi-audio, and subtitles without transcoding."
+                hint="Open streams in an external or built-in macOS player instead of the in-app web player. Handles MKV, multi-audio, and subtitles without transcoding."
                 checked={preferences.useNativeMacPlayer}
                 onChange={(useNativeMacPlayer) => onUpdatePreferences({ useNativeMacPlayer })}
               />
+              {preferences.useNativeMacPlayer ? (
+                <SettingsField
+                  label="Preferred player"
+                  hint="Automatic tries the built-in AVPlayer window for common formats, then falls back to installed apps. QuickTime works best with MP4 and HLS streams."
+                >
+                  <SettingsSelect
+                    value={preferences.macNativePlayer}
+                    onChange={(value) => onUpdatePreferences({ macNativePlayer: value as MacNativePlayer })}
+                  >
+                    { (nativePlayers.length > 0 ? nativePlayers : macNativePlayerFallback).map((player) => (
+                      <option key={player.id} value={player.id} disabled={!player.available}>
+                        {player.label}
+                        {!player.available ? ' (not installed)' : ''}
+                      </option>
+                    ))}
+                  </SettingsSelect>
+                </SettingsField>
+              ) : null}
             </SettingsSection>
           ) : null}
 
@@ -376,6 +416,18 @@ export function PreferencesModal({
                 <option value="block">Skip download</option>
               </SettingsSelect>
             </SettingsField>
+            <SettingsToggle
+              label="Show Jellyfin library badges"
+              hint="Display quality badges on posters when a title is already in your Jellyfin library."
+              checked={preferences.jellyfinShowLibraryBadges}
+              onChange={(jellyfinShowLibraryBadges) => onUpdatePreferences({ jellyfinShowLibraryBadges })}
+            />
+            <SettingsToggle
+              label="Skip owned episodes in season downloads"
+              hint="When downloading a full season, skip episodes that are already in Jellyfin."
+              checked={preferences.jellyfinSkipOwnedEpisodes}
+              onChange={(jellyfinSkipOwnedEpisodes) => onUpdatePreferences({ jellyfinSkipOwnedEpisodes })}
+            />
           </SettingsSection>
 
           <SettingsSection title="Destinations & Jellyfin">
@@ -387,6 +439,18 @@ export function PreferencesModal({
               onChangeJellyfinApiKey={onChangeJellyfinApiKey}
               onOpenJellyfinSignIn={onOpenJellyfinSignIn}
             />
+            {onImportJellyfinWatchlist ? (
+              <div className="pt-2">
+                <SettingsHint>Merge Jellyfin favorites into your local watchlist (by IMDb id).</SettingsHint>
+                <button
+                  type="button"
+                  onClick={onImportJellyfinWatchlist}
+                  className="mt-2 h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+                >
+                  Import Jellyfin favorites
+                </button>
+              </div>
+            ) : null}
           </SettingsSection>
         </div>
       ) : null}

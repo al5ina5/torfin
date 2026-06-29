@@ -5,11 +5,13 @@ import { SWRConfig } from 'swr'
 import './index.css'
 import { initTheme } from './lib/theme'
 import { initViewportHeight } from './lib/viewport'
+import { installAppToastStyles } from './lib/install-app-toast-styles'
 import { AppToaster } from './components/AppToaster'
 import App from './App.tsx'
 
 initTheme()
 initViewportHeight()
+installAppToastStyles()
 
 registerSW({ immediate: true })
 

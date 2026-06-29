@@ -1,6 +1,8 @@
 import { loadThemeMode } from './theme'
 import { STORAGE_KEYS, loadStoredJson, loadStoredString } from './storage'
-import type { AppPreferences, ContentType, LibraryViewMode, StartupCatalogId } from '../types'
+import type { AppPreferences, ContentType, LibraryViewMode, MacNativePlayer, StartupCatalogId } from '../types'
+
+const macNativePlayerIds: MacNativePlayer[] = ['auto', 'avplayer', 'quicktime', 'mpv', 'iina', 'vlc']
 
 export const defaultPreferences: AppPreferences = {
   posterSize: 132,
@@ -26,8 +28,11 @@ export const defaultPreferences: AppPreferences = {
   completeRatioPercent: 92,
   alwaysConfirmDownloadDestination: false,
   jellyfinDuplicateAction: 'ask',
+  jellyfinShowLibraryBadges: true,
+  jellyfinSkipOwnedEpisodes: true,
   apiRequestTimeoutSeconds: 15,
   useNativeMacPlayer: true,
+  macNativePlayer: 'auto',
 }
 
 const startupCatalogIds: StartupCatalogId[] = [
@@ -82,7 +87,12 @@ export function normalizePreferences(stored: Partial<AppPreferences>): AppPrefer
     completeRatioPercent,
     alwaysConfirmDownloadDestination: stored.alwaysConfirmDownloadDestination ?? defaultPreferences.alwaysConfirmDownloadDestination,
     useNativeMacPlayer: stored.useNativeMacPlayer ?? defaultPreferences.useNativeMacPlayer,
+    macNativePlayer: macNativePlayerIds.includes(stored.macNativePlayer as MacNativePlayer)
+      ? (stored.macNativePlayer as MacNativePlayer)
+      : defaultPreferences.macNativePlayer,
     jellyfinDuplicateAction,
+    jellyfinShowLibraryBadges: stored.jellyfinShowLibraryBadges !== false,
+    jellyfinSkipOwnedEpisodes: stored.jellyfinSkipOwnedEpisodes !== false,
     apiRequestTimeoutSeconds,
   }
 }

@@ -16,6 +16,148 @@ pub(crate) struct JellyfinLibraryMatch {
     height: Option<i64>,
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct JellyfinSeasonEpisode {
+    episode: i32,
+    #[serde(rename = "match")]
+    matched: JellyfinLibraryMatch,
+}
+
+#[tauri::command]
+pub(crate) async fn lookup_jellyfin_season_episodes(
+    base_url: String,
+    api_key: String,
+    imdb_id: String,
+    season: i32,
+) -> Result<Vec<JellyfinSeasonEpisode>, String> {
+    let base_url = normalized_base_url(&base_url)?;
+    let client = reqwest::Client::new();
+    let token = api_key.trim();
+    let provider = format!("imdb.{}", imdb_id.trim());
+
+    let series_url = format!(
+        "{base_url}/Items?Recursive=true&IncludeItemTypes=Series&AnyProviderIdEquals={provider}&Fields=ProviderIds",
+    );
+    let series_body = client
+        .get(&series_url)
+        .header("X-Emby-Token", token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| error.to_string())?;
+    let series_id = series_body
+        .get("Items")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("Id"))
+        .and_then(|value| value.as_str());
+    let Some(series_id) = series_id else {
+        return Ok(Vec::new());
+    };
+
+    let episode_url = format!(
+        "{base_url}/Shows/{series_id}/Episodes?Season={season}&Fields=Path,MediaSources,IndexNumber"
+    );
+    let episode_body = client
+        .get(&episode_url)
+        .header("X-Emby-Token", token)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let items = episode_body
+        .get("Items")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(items
+        .into_iter()
+        .filter_map(|item| {
+            let episode = item.get("IndexNumber").and_then(|value| value.as_i64())? as i32;
+            Some(JellyfinSeasonEpisode {
+                episode,
+                matched: item_to_match(&item),
+            })
+        })
+        .collect())
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct JellyfinFavoriteItem {
+    id: String,
+    #[serde(rename = "type")]
+    content_type: String,
+    name: String,
+    #[serde(rename = "releaseInfo", skip_serializing_if = "Option::is_none")]
+    release_info: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn fetch_jellyfin_favorites(
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<JellyfinFavoriteItem>, String> {
+    let base_url = normalized_base_url(&base_url)?;
+    let client = reqwest::Client::new();
+    let body = client
+        .get(format!(
+            "{base_url}/Users/Me/Items?Recursive=true&IncludeItemTypes=Movie,Series&Filters=IsFavorite&Fields=ProviderIds,Name,Type,ProductionYear"
+        ))
+        .header("X-Emby-Token", api_key.trim())
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let items = body
+        .get("Items")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    Ok(items
+        .into_iter()
+        .filter_map(|item| {
+            let imdb_id = item
+                .get("ProviderIds")
+                .and_then(|value| value.get("imdb").or_else(|| value.get("Imdb")))
+                .and_then(|value| value.as_str())?;
+            let content_type = if item.get("Type").and_then(|value| value.as_str()) == Some("Series") {
+                "series"
+            } else {
+                "movie"
+            };
+            Some(JellyfinFavoriteItem {
+                id: imdb_id.to_string(),
+                content_type: content_type.to_string(),
+                name: item
+                    .get("Name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("Unknown")
+                    .to_string(),
+                release_info: item
+                    .get("ProductionYear")
+                    .and_then(|value| value.as_i64())
+                    .map(|year| year.to_string()),
+            })
+        })
+        .collect())
+}
+
 #[tauri::command]
 pub(crate) async fn lookup_jellyfin_library(
     base_url: String,

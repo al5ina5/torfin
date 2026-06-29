@@ -6,17 +6,33 @@ import type { MediaInfo } from '../types'
 type PlaybackStatusOverlayProps = {
   status: string
   mediaInfo: MediaInfo | null
+  buffering?: boolean
 }
 
-export function PlaybackStatusOverlay({ status, mediaInfo }: PlaybackStatusOverlayProps) {
+function statusPhase(status: string, buffering: boolean) {
+  if (buffering && !status) return 'Buffering'
+  if (status === 'Opening' || status === 'Resolving' || status === 'Refreshing link') return 'Connecting'
+  if (['Transcoding', 'Preparing', 'Remuxing', 'Starting'].includes(status)) return 'Transcoding'
+  if (status === 'Retrying playback') return 'Recovering'
+  return status
+}
+
+export function PlaybackStatusOverlay({ status, mediaInfo, buffering = false }: PlaybackStatusOverlayProps) {
   const { detail, whimsical, progress, stalled } = usePlaybackStatusProgress(status, mediaInfo)
+  const phase = statusPhase(status, buffering)
+  const headline = buffering && !status ? 'Buffering' : status || 'Loading'
 
   return (
     <div className="grid aspect-video w-full place-items-center bg-black text-white">
       <div className="flex w-full max-w-sm flex-col items-center gap-3 px-6">
-        <div className="flex items-center gap-2 text-[13px] font-semibold">
-          <Loader2 className="animate-spin" size={16} />
-          {status}
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-2 text-[13px] font-semibold">
+            <Loader2 className="animate-spin" size={16} />
+            {headline}
+          </div>
+          {phase && phase !== headline ? (
+            <p className="text-[10px] uppercase tracking-wide text-white/45">{phase}</p>
+          ) : null}
         </div>
 
         <div className="w-full space-y-2">

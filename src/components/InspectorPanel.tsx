@@ -17,6 +17,8 @@ type InspectorPanelProps = {
   jellyfinMatch: JellyfinLibraryMatch | null
   jellyfinLoading: boolean
   jellyfinUrl: string
+  jellyfinItemUrl?: string
+  onOpenInJellyfin?: () => void
   topStreamQuality?: number
   episodeOptions: SeriesMetaEpisode[]
   loadingEpisodes: boolean
@@ -75,7 +77,9 @@ function InspectorContent({
   onSearchPerson,
   jellyfinMatch,
   jellyfinLoading,
-  jellyfinUrl,
+  jellyfinUrl: _jellyfinUrl,
+  jellyfinItemUrl,
+  onOpenInJellyfin,
   topStreamQuality,
   episodeOptions,
   loadingEpisodes,
@@ -172,6 +176,16 @@ function InspectorContent({
               </div>
             ) : jellyfinMatch ? (
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                {jellyfinItemUrl && onOpenInJellyfin ? (
+                  <button
+                    type="button"
+                    onClick={onOpenInJellyfin}
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    Play in Jellyfin
+                    <ExternalLink size={11} />
+                  </button>
+                ) : null}
                 <span className="inline-flex rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-200">
                   In Jellyfin · {jellyfinMatch.qualityLabel || 'Available'}
                 </span>
@@ -180,9 +194,9 @@ function InspectorContent({
                     Higher quality available
                   </span>
                 ) : null}
-                {jellyfinUrl ? (
+                {jellyfinItemUrl && !onOpenInJellyfin ? (
                   <a
-                    href={jellyfinUrl}
+                    href={jellyfinItemUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-[10px] font-semibold text-[var(--mac-accent)]"

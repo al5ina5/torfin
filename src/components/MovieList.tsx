@@ -1,7 +1,8 @@
 import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
-import type { Movie, PlaybackProgress } from '../types'
+import { jellyfinLibraryKey } from '../lib/jellyfin-library'
+import type { JellyfinLibraryMatch, Movie, PlaybackProgress } from '../types'
 import { MovieEmptyState } from './MovieEmptyState'
 import { MoviePoster } from './MoviePoster'
 
@@ -12,6 +13,7 @@ type MovieListProps = {
   catalogId?: string
   contentKey?: string
   watchlistIds?: Set<string>
+  libraryMatches?: Record<string, JellyfinLibraryMatch | null>
   showYears: boolean
   showRatings: boolean
   loading: boolean
@@ -23,6 +25,9 @@ type MovieListProps = {
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
   onClearFilters?: () => void
+  onOpenSettings?: () => void
+  onBrowseTrending?: () => void
+  pullRefreshHandlers?: Record<string, unknown>
 }
 
 function movieMetaLine(
@@ -78,6 +83,7 @@ export function MovieList({
   catalogId,
   contentKey = '',
   watchlistIds,
+  libraryMatches,
   showYears,
   showRatings,
   loading,
@@ -89,6 +95,9 @@ export function MovieList({
   onSelectMovie,
   onToggleWatchlist,
   onClearFilters,
+  onOpenSettings,
+  onBrowseTrending,
+  pullRefreshHandlers,
 }: MovieListProps) {
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
@@ -100,25 +109,32 @@ export function MovieList({
     <div
       ref={scrollRef}
       className={`app-movie-scroll @container min-h-0 flex-1 overflow-y-auto app-touch-bottom-scroll-padded-sm${showEmpty ? ' flex flex-col' : ''}`}
+      {...pullRefreshHandlers}
     >
       {loading ? (
         <ListSkeleton />
       ) : movies.length ? (
         <div
           key={contentKey}
-          className="grid grid-cols-1 gap-1.5 @min-[380px]:grid-cols-2 @min-[580px]:grid-cols-3 @min-[780px]:grid-cols-4"
+          className="catalog-grid grid grid-cols-1 gap-1.5 @min-[380px]:grid-cols-2 @min-[580px]:grid-cols-3 @min-[780px]:grid-cols-4"
         >
           {movies.map((movie, index) => {
             const progress = progressById.get(`${movie.type}:${movie.id}`)
             const inWatchlist = watchlistIds?.has(`${movie.type}:${movie.id}`)
+            const libraryMatch = libraryMatches?.[jellyfinLibraryKey(movie.type, movie.id)]
             const isFocused = focusedMovieIndex === index
+            const isSelected = selectedMovieId === movie.id && focusedMovieIndex === index
             const metaLine = movieMetaLine(movie, { catalogId, progress, showYears, showRatings })
+            const metaWithLibrary = libraryMatch
+              ? [libraryMatch.qualityLabel ? `Jellyfin · ${libraryMatch.qualityLabel}` : 'In Jellyfin', metaLine].filter(Boolean).join(' · ')
+              : metaLine
             return (
               <div
                 key={`${movie.type}:${movie.id}`}
-                className={`movie-item-enter group flex min-w-0 items-center gap-1.5 rounded-md border bg-[var(--mac-surface)] p-1.5 transition-[border-color,box-shadow,transform] duration-150 active:scale-[0.995] ${
-                  selectedMovieId === movie.id || isFocused
-                    ? 'border-[var(--mac-accent)] ring-2 ring-[var(--mac-accent)]/20'
+                data-catalog-index={index}
+                className={`movie-item-enter group relative flex min-w-0 items-center gap-1.5 rounded-md border bg-[var(--mac-surface)] p-1.5 transition-[border-color,box-shadow,transform] duration-150 active:scale-[0.995] ${
+                  isFocused || isSelected
+                    ? 'movie-focus-ring movie-focus-ring--outset'
                     : 'border-[var(--mac-border)] hover:border-[var(--mac-border-strong)]'
                 }`}
                 style={{ animationDelay: `${Math.min(index, 20) * 10}ms` }}
@@ -133,8 +149,8 @@ export function MovieList({
                   </div>
                   <div className="min-w-0 flex-1 overflow-hidden">
                     <div className="truncate text-[12px] font-medium leading-snug">{movie.name}</div>
-                    {metaLine ? (
-                      <div className="mt-0.5 truncate text-[10px] leading-snug text-[var(--mac-secondary)]">{metaLine}</div>
+                    {metaWithLibrary ? (
+                      <div className="mt-0.5 truncate text-[10px] leading-snug text-[var(--mac-secondary)]">{metaWithLibrary}</div>
                     ) : null}
                     {progress && catalogId === 'continue' ? (
                       <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-[var(--mac-control)]">
@@ -173,7 +189,12 @@ export function MovieList({
           ) : null}
         </div>
       ) : showEmpty ? (
-        <MovieEmptyState catalogId={catalogId} onClearFilters={onClearFilters} />
+        <MovieEmptyState
+          catalogId={catalogId}
+          onClearFilters={onClearFilters}
+          onOpenSettings={onOpenSettings}
+          onBrowseTrending={onBrowseTrending}
+        />
       ) : null}
     </div>
   )

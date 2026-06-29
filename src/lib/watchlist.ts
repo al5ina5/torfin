@@ -31,3 +31,15 @@ export function toggleWatchlist(movie: Movie) {
 export function isInWatchlist(movie: Movie) {
   return loadWatchlist().some((entry) => entry.id === movie.id && entry.type === movie.type)
 }
+
+export function mergeWatchlist(incoming: Movie[]) {
+  const current = loadWatchlist()
+  const next = [...current]
+  for (const movie of incoming) {
+    if (!next.some((entry) => entry.id === movie.id && entry.type === movie.type)) {
+      next.push(movie)
+    }
+  }
+  saveWatchlist(next)
+  return next
+}

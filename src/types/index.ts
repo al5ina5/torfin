@@ -117,9 +117,14 @@ export type AppPreferences = {
   completeRatioPercent: number
   alwaysConfirmDownloadDestination: boolean
   jellyfinDuplicateAction: JellyfinDuplicateAction
+  jellyfinShowLibraryBadges: boolean
+  jellyfinSkipOwnedEpisodes: boolean
   apiRequestTimeoutSeconds: ApiRequestTimeoutSeconds
   useNativeMacPlayer: boolean
+  macNativePlayer: MacNativePlayer
 }
+
+export type MacNativePlayer = 'auto' | 'avplayer' | 'quicktime' | 'mpv' | 'iina' | 'vlc'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 export type LibraryViewMode = 'grid' | 'list'
@@ -224,6 +229,10 @@ export type DownloadJob = {
   destinationId?: string
   destinationName?: string
   pollConfig?: DownloadPollConfig
+  batchId?: string
+  batchLabel?: string
+  episodeSeason?: number
+  episodeNumber?: number
 }
 
 export type DownloadPollConfig = {

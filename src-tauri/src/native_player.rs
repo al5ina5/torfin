@@ -10,43 +10,168 @@ pub(crate) struct NativePlayerResult {
     mode: String,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativePlayerOption {
+    id: String,
+    label: String,
+    available: bool,
+}
+
 #[tauri::command]
 pub(crate) fn supports_native_player() -> bool {
     cfg!(target_os = "macos")
 }
 
 #[tauri::command]
-pub(crate) fn open_native_player(url: String, title: Option<String>) -> Result<NativePlayerResult, String> {
+pub(crate) fn list_native_players() -> Vec<NativePlayerOption> {
+    #[cfg(target_os = "macos")]
+    {
+        list_native_players_macos()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Vec::new()
+    }
+}
+
+#[tauri::command]
+pub(crate) fn open_native_player(
+    url: String,
+    title: Option<String>,
+    player: Option<String>,
+) -> Result<NativePlayerResult, String> {
     #[cfg(target_os = "macos")]
     {
         let label = title
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "Torfin".to_string());
-        open_native_player_macos(&url, &label)
+        open_native_player_macos(&url, &label, player.as_deref())
     }
 
     #[cfg(not(target_os = "macos"))]
     {
         let _ = url;
         let _ = title;
+        let _ = player;
         Err("Native player is only available in the macOS desktop app.".to_string())
     }
 }
 
 #[cfg(target_os = "macos")]
-fn open_native_player_macos(url: &str, title: &str) -> Result<NativePlayerResult, String> {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        if let Ok(result) = open_avplayer_window(url, title) {
-            return Ok(result);
-        }
-    }
+fn list_native_players_macos() -> Vec<NativePlayerOption> {
+    let installed = external_player_candidates()
+        .into_iter()
+        .map(|player| player.id.to_string())
+        .collect::<Vec<_>>();
 
-    launch_external_player(url, title)
+    vec![
+        NativePlayerOption {
+            id: "auto".to_string(),
+            label: "Automatic".to_string(),
+            available: true,
+        },
+        NativePlayerOption {
+            id: "avplayer".to_string(),
+            label: "AVPlayer (built-in window)".to_string(),
+            available: true,
+        },
+        NativePlayerOption {
+            id: "quicktime".to_string(),
+            label: "QuickTime Player".to_string(),
+            available: quicktime_available(),
+        },
+        NativePlayerOption {
+            id: "mpv".to_string(),
+            label: "mpv".to_string(),
+            available: installed.contains(&"mpv".to_string()),
+        },
+        NativePlayerOption {
+            id: "iina".to_string(),
+            label: "IINA".to_string(),
+            available: installed.contains(&"iina".to_string()),
+        },
+        NativePlayerOption {
+            id: "vlc".to_string(),
+            label: "VLC".to_string(),
+            available: installed.contains(&"vlc".to_string()),
+        },
+    ]
 }
 
 #[cfg(target_os = "macos")]
-fn launch_external_player(url: &str, title: &str) -> Result<NativePlayerResult, String> {
-    for candidate in external_player_candidates() {
+fn open_native_player_macos(
+    url: &str,
+    title: &str,
+    player: Option<&str>,
+) -> Result<NativePlayerResult, String> {
+    match player.unwrap_or("auto") {
+        "auto" => {
+            if url.starts_with("http://") || url.starts_with("https://") {
+                if let Ok(result) = open_avplayer_window(url, title) {
+                    return Ok(result);
+                }
+            }
+            launch_external_player(url, title, None)
+        }
+        "avplayer" => open_avplayer_window(url, title),
+        "quicktime" => launch_quicktime(url),
+        preferred => launch_external_player(url, title, Some(preferred)),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn launch_quicktime(url: &str) -> Result<NativePlayerResult, String> {
+    if !quicktime_available() {
+        return Err("QuickTime Player is not installed.".to_string());
+    }
+
+    Command::new("open")
+        .args(["-a", "QuickTime Player", url])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Could not launch QuickTime Player: {error}"))?;
+
+    Ok(NativePlayerResult {
+        player: "QuickTime Player".to_string(),
+        mode: "external".to_string(),
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn quicktime_available() -> bool {
+    [
+        "/System/Applications/QuickTime Player.app",
+        "/Applications/QuickTime Player.app",
+    ]
+    .iter()
+    .any(|path| PathBuf::from(path).is_dir())
+}
+
+#[cfg(target_os = "macos")]
+fn launch_external_player(
+    url: &str,
+    title: &str,
+    preferred: Option<&str>,
+) -> Result<NativePlayerResult, String> {
+    let candidates = external_player_candidates();
+
+    if let Some(id) = preferred {
+        let player = candidates
+            .iter()
+            .find(|candidate| candidate.id == id)
+            .ok_or_else(|| format!("{id} is not installed."))?;
+        try_launch_external(player, url, title)?;
+        return Ok(NativePlayerResult {
+            player: player.label.to_string(),
+            mode: "external".to_string(),
+        });
+    }
+
+    for candidate in candidates {
         if try_launch_external(&candidate, url, title).is_ok() {
             return Ok(NativePlayerResult {
                 player: candidate.label.to_string(),
@@ -63,6 +188,7 @@ fn launch_external_player(url: &str, title: &str) -> Result<NativePlayerResult, 
 
 #[cfg(target_os = "macos")]
 struct ExternalPlayer {
+    id: &'static str,
     command: PathBuf,
     label: &'static str,
     build_args: fn(&str, &str) -> Vec<String>,
@@ -74,6 +200,7 @@ fn external_player_candidates() -> Vec<ExternalPlayer> {
 
     if let Some(path) = find_in_path("mpv") {
         players.push(ExternalPlayer {
+            id: "mpv",
             command: path,
             label: "mpv",
             build_args: |url, title| {
@@ -90,6 +217,7 @@ fn external_player_candidates() -> Vec<ExternalPlayer> {
     let iina = PathBuf::from("/Applications/IINA.app/Contents/MacOS/iina-cli");
     if iina.is_file() {
         players.push(ExternalPlayer {
+            id: "iina",
             command: iina,
             label: "IINA",
             build_args: |url, title| {
@@ -106,6 +234,7 @@ fn external_player_candidates() -> Vec<ExternalPlayer> {
     let vlc = PathBuf::from("/Applications/VLC.app/Contents/MacOS/VLC");
     if vlc.is_file() {
         players.push(ExternalPlayer {
+            id: "vlc",
             command: vlc,
             label: "VLC",
             build_args: |url, title| {

@@ -7,6 +7,16 @@ import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { fetchTorboxAccount, isVideoFilename, normalizeAllowedFetchJsonUrl, resolveTorboxStream } from './server/torbox.mjs'
 import { isFfmpegAvailable, getHlsTranscodeProgress, probeMedia, seekHlsTranscode, serveHlsTranscodeFile, startHlsTranscode } from './server/transcode.mjs'
+import {
+  batchLookupJellyfinLibrary,
+  fetchJellyfinFavorites,
+  jellyfinPathForJob as jellyfinPathForJobFromModule,
+  lookupJellyfinLibrary,
+  lookupJellyfinSeasonEpisodes,
+  refreshJellyfin,
+  verifyJellyfinImport,
+  waitForJellyfinImport as waitForJellyfinImportFromModule,
+} from './server/jellyfin.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const distDir = resolve(__dirname, 'dist')
@@ -65,6 +75,7 @@ const defaultJellyfinApiKey = process.env.JELLYFIN_API_KEY || ''
 const jellyfinPathMapFrom = process.env.JELLYFIN_PATH_MAP_FROM || defaultDownloadDir
 const jellyfinPathMapTo = process.env.JELLYFIN_PATH_MAP_TO || '/movies'
 const port = Number(process.env.PORT || 3020)
+const isDevelopment = process.env.NODE_ENV === 'development'
 const aria2Split = String(Number(process.env.TORBOX_ARIA2_SPLIT || 16))
 const aria2Connections = String(Number(process.env.TORBOX_ARIA2_CONNECTIONS || 16))
 const aria2ConcurrentDownloads = String(Number(process.env.TORBOX_ARIA2_CONCURRENT_DOWNLOADS || 10))
@@ -1274,119 +1285,16 @@ function rmFile(path) {
   })
 }
 
-async function refreshJellyfin({ baseUrl, apiKey }) {
-  const base = String(baseUrl || '').replace(/\/+$/, '')
-  if (!base) return
-  await fetchJson(`${base}/Library/Refresh`, {
-    method: 'POST',
-    headers: { 'X-Emby-Token': String(apiKey || '').trim() },
-  })
-}
-
-function jellyfinItemToMatch(item) {
-  if (!item) return null
-  const streams = item.MediaSources?.[0]?.MediaStreams || []
-  const video = streams.find((stream) => stream.Type === 'Video') || {}
-  const height = Number(video.Height) || 0
-  return {
-    itemId: item.Id || '',
-    name: item.Name || 'Library item',
-    path: item.Path || '',
-    qualityLabel: height >= 2160 ? '4K' : height ? `${height}p` : '',
-    width: Number(video.Width) || 0,
-    height,
-  }
-}
-
-async function lookupJellyfinLibrary({ baseUrl, apiKey, imdbId, contentType, season, episode }) {
-  const base = String(baseUrl || '').replace(/\/+$/, '')
-  const token = String(apiKey || '').trim()
-  const provider = `imdb.${String(imdbId || '').trim()}`
-  if (!base || !token || !imdbId) return null
-  const headers = { 'X-Emby-Token': token }
-
-  if (contentType === 'series' && season && episode) {
-    const seriesBody = await fetchJson(
-      `${base}/Items?Recursive=true&IncludeItemTypes=Series&AnyProviderIdEquals=${encodeURIComponent(provider)}&Fields=ProviderIds`,
-      { headers },
-    )
-    const series = Array.isArray(seriesBody?.Items) ? seriesBody.Items[0] : null
-    if (!series?.Id) return null
-    const episodeBody = await fetchJson(
-      `${base}/Shows/${series.Id}/Episodes?Season=${season}&Fields=Path,MediaSources`,
-      { headers },
-    )
-    const items = Array.isArray(episodeBody?.Items) ? episodeBody.Items : []
-    const match = items.find((item) => Number(item.IndexNumber) === Number(episode))
-    return jellyfinItemToMatch(match)
-  }
-
-  const includeType = contentType === 'series' ? 'Series' : 'Movie'
-  const body = await fetchJson(
-    `${base}/Items?Recursive=true&IncludeItemTypes=${includeType}&AnyProviderIdEquals=${encodeURIComponent(provider)}&Fields=Path,MediaSources`,
-    { headers },
-  )
-  const items = Array.isArray(body?.Items) ? body.Items : []
-  return jellyfinItemToMatch(items[0])
-}
-
 function jellyfinPathForJob(job) {
-  const target = normalize(job.targetPath)
-  const from = normalize(jellyfinPathMapFrom)
-  const to = normalize(jellyfinPathMapTo)
-  if (target === from) return to
-  if (target.startsWith(`${from}/`)) return `${to}${target.slice(from.length)}`
-  return target
-}
-
-async function findJellyfinItemForJob(job, { baseUrl, apiKey }) {
-  const base = String(baseUrl || '').replace(/\/+$/, '')
-  const headers = { 'X-Emby-Token': String(apiKey || '').trim() }
-  const jellyfinPath = jellyfinPathForJob(job)
-  const targetPath = normalize(job.targetPath || '')
-  const basenameName = basename(job.targetPath || '')
-  const body = await fetchJson(`${base}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Path&Limit=10000`, { headers })
-  const items = Array.isArray(body?.Items) ? body.Items : []
-  const exact = items.find((item) => item.Path === jellyfinPath || (targetPath && item.Path === targetPath))
-  if (exact) return exact
-  if (basenameName) {
-    return items.find((item) => item.Path?.endsWith(`/${basenameName}`) || item.Path?.endsWith(basenameName)) || null
-  }
-  return null
-}
-
-async function verifyJellyfinImport({ baseUrl, apiKey, targetPath, pathMapFrom, pathMapTo }) {
-  const base = String(baseUrl || '').replace(/\/+$/, '')
-  const headers = { 'X-Emby-Token': String(apiKey || '').trim() }
-  const target = normalize(String(targetPath || ''))
-  if (!target) return null
-  const from = normalize(String(pathMapFrom || jellyfinPathMapFrom))
-  const to = normalize(String(pathMapTo || jellyfinPathMapTo))
-  let mapped = target
-  if (target === from) mapped = to
-  else if (target.startsWith(`${from}/`)) mapped = `${to}${target.slice(from.length)}`
-  const body = await fetchJson(`${base}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Fields=Path&Limit=10000`, { headers })
-  const items = Array.isArray(body?.Items) ? body.Items : []
-  const basenameName = basename(target)
-  const exact = items.find((item) => item.Path === mapped || item.Path === target)
-  if (exact) return { itemId: exact.Id || '', path: exact.Path || '' }
-  if (basenameName) {
-    const fuzzy = items.find((item) => item.Path?.endsWith(`/${basenameName}`) || item.Path?.endsWith(basenameName))
-    if (fuzzy) return { itemId: fuzzy.Id || '', path: fuzzy.Path || '' }
-  }
-  return null
+  return jellyfinPathForJobFromModule(job, { pathMapFrom: jellyfinPathMapFrom, pathMapTo: jellyfinPathMapTo })
 }
 
 async function waitForJellyfinImport(job, config) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const item = await findJellyfinItemForJob(job, config).catch((error) => {
-      appendJobLog(job, 'jellyfin.verify.failed', { error: error.message })
-      return null
-    })
-    if (item) return item
-    await sleep(attempt < 2 ? 1000 : 2500)
-  }
-  return null
+  return waitForJellyfinImportFromModule(
+    job,
+    { ...config, pathMapFrom: jellyfinPathMapFrom, pathMapTo: jellyfinPathMapTo },
+    { sleep, appendJobLog },
+  )
 }
 
 async function refreshConfiguredJellyfin(job) {
@@ -1587,6 +1495,18 @@ async function handleApi(request, response, pathname) {
     sendJson(response, 200, await lookupJellyfinLibrary(body))
     return
   }
+  if (pathname === '/api/jellyfin/batch-lookup') {
+    sendJson(response, 200, await batchLookupJellyfinLibrary(body))
+    return
+  }
+  if (pathname === '/api/jellyfin/season-episodes') {
+    sendJson(response, 200, await lookupJellyfinSeasonEpisodes(body))
+    return
+  }
+  if (pathname === '/api/jellyfin/favorites') {
+    sendJson(response, 200, await fetchJellyfinFavorites(body))
+    return
+  }
   if (pathname === '/api/torbox/account') {
     sendJson(response, 200, await fetchTorboxAccount(body.apiKey))
     return
@@ -1629,6 +1549,14 @@ const server = createServer((request, response) => {
       })
       sendError(response, 500, error.message || String(error))
     })
+    return
+  }
+  if (isDevelopment) {
+    sendError(
+      response,
+      404,
+      'Torfin API only in dev. Open http://localhost:5173 for the app UI.',
+    )
     return
   }
   serveStatic(request, response, url.pathname)
@@ -1696,8 +1624,12 @@ server.on('error', (error) => {
   process.exit(1)
 })
 
-server.listen(port, '0.0.0.0', () => {
+server.listen(port, isDevelopment ? '127.0.0.1' : '0.0.0.0', () => {
   void resumeIncompleteDownloads()
   void prewarmJsonCache()
+  if (isDevelopment) {
+    console.log(`Torfin API (dev) on http://127.0.0.1:${port} — UI at http://localhost:5173`)
+    return
+  }
   console.log(`Torfin web listening on ${port}`)
 })

@@ -39,7 +39,7 @@ export function useCatalogScrollLoad({
   }, [enabled, itemCount, layoutKey, loadMoreRef, scrollRef])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || itemCount === 0) return
     const root = scrollRef.current
     if (!root) return
     if (root.scrollHeight <= root.clientHeight + 16) {

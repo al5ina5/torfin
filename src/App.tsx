@@ -7,14 +7,18 @@ import { ConfirmationDialog } from './components/ConfirmationDialog'
 import { DownloadDestinationPicker } from './components/DownloadDestinationPicker'
 import { DownloadsModal } from './components/DownloadsModal'
 import { FiltersModal } from './components/FiltersModal'
+import { FirstRunSetup } from './components/FirstRunSetup'
 import { InspectorPanel } from './components/InspectorPanel'
 import { JellyfinSignInModal } from './components/JellyfinSignInModal'
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { MovieGrid } from './components/MovieGrid'
 import { MovieList } from './components/MovieList'
 import { PreferencesModal } from './components/PreferencesModal'
 import { Sidebar } from './components/Sidebar'
 import { useAppModalRoute } from './hooks/useAppModalRoute'
+import { useCatalogPullRefresh } from './hooks/useCatalogPullRefresh'
 import { useCatalogScrollLoad } from './hooks/useCatalogScrollLoad'
+import { useJellyfinCatalogStatus } from './hooks/useJellyfinCatalogStatus'
 import { readAppRoute } from './lib/app-routes'
 import { useSearchQueryRoute } from './hooks/useSearchQueryRoute'
 import { useDockBadge } from './hooks/useDockBadge'
@@ -70,11 +74,11 @@ import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolve
 import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { isMacTauri, openNativePlayer } from './lib/native-player'
 import { playbackPrepareStatus } from './lib/transcode-strategy'
-import { jellyfinPlayUrl, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
+import { jellyfinPlayUrl, lookupJellyfinSeasonEpisodes, fetchJellyfinFavorites, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
 import { streamDirectUrl, streamNeedsTorboxResolve } from './lib/streams-display'
-import { STORAGE_KEYS, loadStoredJson, saveStoredJson, saveStoredString } from './lib/storage'
-import { isInWatchlist, loadWatchlist, toggleWatchlist } from './lib/watchlist'
+import { STORAGE_KEYS, loadStoredJson, loadStoredString, saveStoredJson, saveStoredString } from './lib/storage'
+import { isInWatchlist, loadWatchlist, mergeWatchlist, toggleWatchlist } from './lib/watchlist'
 import type {
   AppPreferences,
   ContentType,
@@ -234,6 +238,8 @@ export default function App() {
   const lastPlaybackErrorRef = useRef('')
   const activePlaybackStreamRef = useRef<{ stream: StreamResult; index: number } | null>(null)
   const [nextEpisodePrompt, setNextEpisodePrompt] = useState<{ remaining: number; next: { season: number; episode: number } } | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [firstRunOpen, setFirstRunOpen] = useState(false)
   const startupSyncedRef = useRef(false)
   const dismissedDownloadIdsRef = useRef(loadDismissedDownloadIds())
 
@@ -286,12 +292,12 @@ export default function App() {
   const inspectorMovie = enrichedMovie ?? selectedMovie
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
 
-  const { data: catalogData, error: catalogError, isLoading: catalogLoading, isValidating: catalogValidating } = useSWR(
+  const { data: catalogData, error: catalogError, isLoading: catalogLoading, isValidating: catalogValidating, mutate: mutateCatalog } = useSWR(
     isLibraryCatalog(catalogId) ? null : ['catalog', contentType, filteredCatalogUrl],
     ([, type, url]) => loadJson<{ metas?: unknown[] }>(catalogPageUrl(url, 0)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]),
     { keepPreviousData: false },
   )
-  const { data: searchData, error: searchError, isLoading: searchLoading, isValidating: searchValidating } = useSWR(shouldRemoteSearch ? ['search', contentType, debouncedQuery] : null, ([, type, value]) => loadJson<{ metas?: unknown[] }>(searchUrl(value, type as ContentType)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]))
+  const { data: searchData, error: searchError, isLoading: searchLoading, isValidating: searchValidating, mutate: mutateSearch } = useSWR(shouldRemoteSearch ? ['search', contentType, debouncedQuery] : null, ([, type, value]) => loadJson<{ metas?: unknown[] }>(searchUrl(value, type as ContentType)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]))
   const { data: seriesEpisodes, error: seriesMetaError, isLoading: seriesMetaLoading } = useSWR(
     selectedMovie?.type === 'series' ? ['series-meta', selectedMovie.id] : null,
     () => loadJson<{ meta?: { videos?: unknown[] } }>(metaUrl('series', selectedMovie!.id)).then((body) => normalizeSeriesEpisodes(body)),
@@ -357,6 +363,12 @@ export default function App() {
   useJellyfinRefresh({ downloadJobs, setDownloadJobs })
   useDownloadNotifications({ enabled: preferences.downloadNotifications, jobs: downloadJobs })
   useDockBadge(downloadJobs)
+
+  useEffect(() => {
+    if (!secretsLoaded) return
+    const dismissed = loadStoredString('torfin:first-run-dismissed', '')
+    setFirstRunOpen(!dismissed && !torboxApiKey.trim())
+  }, [secretsLoaded, torboxApiKey])
 
   useEffect(() => {
     switch (route.modal?.kind) {
@@ -503,7 +515,7 @@ export default function App() {
     setMovieError('')
     setMovies([])
     setCatalogSkip(0)
-    setHasMoreMovies(true)
+    setHasMoreMovies(false)
     setLoadingMoreMovies(false)
   }, [catalogId, contentType, filteredCatalogUrl])
 
@@ -660,12 +672,39 @@ export default function App() {
     return filtered.length ? filtered.slice(0, limit) : streams.slice(0, limit)
   }, [activeCustomProfile, preferences.compactResultsLimit, preferences.preferCachedResults, resultProfile, streams])
 
+  const jellyfinApiKeyValue = jellyfinApiKey || downloadConfig.jellyfinApiKey
+  const { libraryMatches } = useJellyfinCatalogStatus({
+    enabled: preferences.jellyfinShowLibraryBadges && Boolean(downloadConfig.jellyfinUrl.trim() && jellyfinApiKeyValue.trim()),
+    movies: displayedMovies,
+    jellyfinUrl: downloadConfig.jellyfinUrl,
+    jellyfinApiKey: jellyfinApiKeyValue,
+  })
+
+  const refreshCatalog = useCallback(async () => {
+    if (shouldRemoteSearch) {
+      await mutateSearch()
+      return
+    }
+    if (!isLibraryCatalog(catalogId)) {
+      await mutateCatalog()
+    }
+  }, [catalogId, mutateCatalog, mutateSearch, shouldRemoteSearch])
+
+  const { pullDistance, refreshing: catalogRefreshing, pullRefreshHandlers } = useCatalogPullRefresh({
+    enabled: !isDesktop,
+    onRefresh: refreshCatalog,
+    scrollRef: moviePanelScrollRef,
+  })
+
   const topStreamQuality = compactStreams[0] ? streamTargetQuality(compactStreams[0]) : 0
   const jellyfinItemUrl = jellyfinMatch ? jellyfinPlayUrl(effectiveDownloadConfig.jellyfinUrl, jellyfinMatch.itemId) : ''
 
   const libraryContentKey = `${contentType}:${catalogId}`
   const catalogContentKey = `${contentType}:${filteredCatalogUrl}`
   const moviesContentKey = shouldRemoteSearch ? `${contentType}:search:${debouncedQuery}` : isLibraryCatalog(catalogId) ? libraryContentKey : catalogContentKey
+  useEffect(() => {
+    setFocusedMovieIndex(0)
+  }, [moviesContentKey])
   const moviesLoading = isLibraryCatalog(catalogId)
     ? false
     : shouldRemoteSearch
@@ -794,6 +833,7 @@ export default function App() {
     movie: Movie,
     episode: { season: number; episode: number } | undefined,
     destination: DownloadDestination,
+    batch?: { batchId?: string; batchLabel?: string; episodeSeason?: number; episodeNumber?: number },
   ) {
     const key = `${stream.pluginName}-${stream.infoHash ?? stream.url ?? stream.title}-${index}`
     const id = stream.infoHash?.toLowerCase() ?? `${movie.id}-${episode?.episode ?? 'movie'}-${index}-${Date.now()}`
@@ -801,7 +841,19 @@ export default function App() {
     const jellyfinKey = jellyfinApiKey || downloadConfig.jellyfinApiKey
     const pollConfig = buildPollConfig(downloadConfig, destination, secrets, jellyfinKey, movie)
     setDownloadJobs((current) => [
-      { pendingId: id, createdAt: new Date().toISOString(), movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig },
+      {
+        pendingId: id,
+        createdAt: new Date().toISOString(),
+        movie,
+        stream,
+        destinationId: destination.id,
+        destinationName: destination.name,
+        pollConfig,
+        batchId: batch?.batchId,
+        batchLabel: batch?.batchLabel,
+        episodeSeason: batch?.episodeSeason ?? episode?.season,
+        episodeNumber: batch?.episodeNumber ?? episode?.episode,
+      },
       ...current,
     ])
     try {
@@ -836,6 +888,10 @@ export default function App() {
           destinationId: destination.id,
           destinationName: destination.name,
           pollConfig,
+          batchId: batch?.batchId,
+          batchLabel: batch?.batchLabel,
+          episodeSeason: batch?.episodeSeason ?? episode?.season,
+          episodeNumber: batch?.episodeNumber ?? episode?.episode,
         },
         ...current.filter((job) => job.pendingId !== id),
       ])
@@ -843,7 +899,19 @@ export default function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not start download.'
       setDownloadJobs((current) => [
-        { pendingId: id, movie, stream, destinationId: destination.id, destinationName: destination.name, pollConfig, error: message },
+        {
+          pendingId: id,
+          movie,
+          stream,
+          destinationId: destination.id,
+          destinationName: destination.name,
+          pollConfig,
+          error: message,
+          batchId: batch?.batchId,
+          batchLabel: batch?.batchLabel,
+          episodeSeason: batch?.episodeSeason ?? episode?.season,
+          episodeNumber: batch?.episodeNumber ?? episode?.episode,
+        },
         ...current.filter((job) => job.pendingId !== id),
       ])
     } finally {
@@ -1076,7 +1144,7 @@ export default function App() {
 
       if (isMacTauri() && preferences.useNativeMacPlayer) {
         setPlaybackStatus('Opening native player')
-        const result = await openNativePlayer(sourceUrl, title)
+        const result = await openNativePlayer(sourceUrl, title, preferences.macNativePlayer)
         setNativePlayback({ player: result.player, title, mode: result.mode })
         setPlaybackStatus('')
         toast.success(`Playing in ${result.player}`)
@@ -1210,10 +1278,29 @@ export default function App() {
     }
     const episodes = seriesEpisodes.filter((entry) => entry.season === selectedSeason)
     if (!episodes.length) return
+    const batchId = `season-${selectedMovie.id}-s${selectedSeason}-${Date.now()}`
+    const batchLabel = `${selectedMovie.name} · S${selectedSeason}`
+    const jellyfinKey = jellyfinApiKey || downloadConfig.jellyfinApiKey
+    let ownedEpisodes = new Set<number>()
+    if (preferences.jellyfinSkipOwnedEpisodes && downloadConfig.jellyfinUrl.trim() && jellyfinKey.trim()) {
+      const owned = await lookupJellyfinSeasonEpisodes({
+        baseUrl: downloadConfig.jellyfinUrl,
+        apiKey: jellyfinKey,
+        imdbId: selectedMovie.id,
+        season: selectedSeason,
+      })
+      ownedEpisodes = new Set(owned.map((entry) => entry.episode))
+    }
     setBatchDownloading(true)
     openDownloads()
+    let queued = 0
+    let skipped = 0
     try {
       for (const entry of episodes) {
+        if (ownedEpisodes.has(entry.episode)) {
+          skipped += 1
+          continue
+        }
         const urlResults = await Promise.allSettled(
           activePlugins.map(async (plugin) => {
             const url = hydrateUrl(plugin.streamUrlTemplate, selectedMovie, torboxApiKey, 'series', { season: entry.season, episode: entry.episode })
@@ -1222,12 +1309,78 @@ export default function App() {
         )
         const found = urlResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
         const best = filterStreamsForProfile(found.sort((a, b) => b.rank - a.rank), resultProfile, preferences.preferCachedResults, activeCustomProfile)[0]
-        if (best) await queueDownload(best, entry.episode, selectedMovie, { season: entry.season, episode: entry.episode }, destination)
+        if (best) {
+          await queueDownload(
+            best,
+            entry.episode,
+            selectedMovie,
+            { season: entry.season, episode: entry.episode },
+            destination,
+            { batchId, batchLabel, episodeSeason: entry.season, episodeNumber: entry.episode },
+          )
+          queued += 1
+        }
       }
-      toast.success('Season queued', `Season ${selectedSeason} downloads added to the queue.`)
+      const detail = skipped
+        ? `${queued} queued, ${skipped} skipped (already in Jellyfin)`
+        : `Season ${selectedSeason} downloads added to the queue.`
+      toast.success('Season queued', detail)
     } finally {
       setBatchDownloading(false)
     }
+  }
+
+  async function retryDownloadJob(job: DownloadJob) {
+    const destination = job.destinationId
+      ? downloadConfig.destinations.find((entry) => entry.id === job.destinationId)
+      : getDefaultDestination(downloadConfig)
+    if (!destination) {
+      toast.error('Could not retry download', 'No destination configured.')
+      return
+    }
+    markDownloadDismissed(dismissedDownloadIdsRef.current, job)
+    setDownloadJobs((current) => current.filter((item) => !isDownloadDismissed(item, dismissedDownloadIdsRef.current)))
+    const episode = job.episodeSeason != null && job.episodeNumber != null
+      ? { season: job.episodeSeason, episode: job.episodeNumber }
+      : undefined
+    await queueDownload(job.stream, job.episodeNumber ?? 0, job.movie, episode, destination, {
+      batchId: job.batchId,
+      batchLabel: job.batchLabel,
+      episodeSeason: job.episodeSeason,
+      episodeNumber: job.episodeNumber,
+    })
+  }
+
+  async function handleImportJellyfinWatchlist() {
+    const jellyfinKey = jellyfinApiKey || downloadConfig.jellyfinApiKey
+    if (!downloadConfig.jellyfinUrl.trim() || !jellyfinKey.trim()) {
+      toast.error('Jellyfin not configured', 'Add your Jellyfin URL and API key first.')
+      return
+    }
+    try {
+      const favorites = await fetchJellyfinFavorites({
+        baseUrl: downloadConfig.jellyfinUrl,
+        apiKey: jellyfinKey,
+      })
+      if (!favorites.length) {
+        toast.info('No favorites found', 'Jellyfin returned no favorite movies or shows.')
+        return
+      }
+      setWatchlist(mergeWatchlist(favorites))
+      toast.success('Watchlist updated', `${favorites.length} favorites imported from Jellyfin.`)
+    } catch (error) {
+      toast.error('Import failed', error instanceof Error ? error.message : 'Could not import Jellyfin favorites.')
+    }
+  }
+
+  function handleOpenInJellyfin() {
+    if (!jellyfinItemUrl) return
+    window.open(jellyfinItemUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  function dismissFirstRun() {
+    saveStoredString('torfin:first-run-dismissed', '1')
+    setFirstRunOpen(false)
   }
 
   async function deleteDownloadOnServer(job: DownloadJob) {
@@ -1322,11 +1475,17 @@ export default function App() {
     toast.success(added ? 'Added to watchlist' : 'Removed from watchlist', movie.name)
   }
 
+  function handleFocusMovie(movie: Movie) {
+    setFocusedMovieIndex(
+      displayedMovies.findIndex((entry) => entry.id === movie.id && entry.type === movie.type),
+    )
+  }
+
   function handleSelectMovie(movie: Movie) {
     navigateToTitle(movie)
     setSelectedMovie(movie)
     setRecentViews(recordRecentView(movie))
-    setFocusedMovieIndex(displayedMovies.findIndex((entry) => entry.id === movie.id))
+    handleFocusMovie(movie)
     if (!isDesktop) setSidebarOpen(false)
   }
 
@@ -1348,13 +1507,16 @@ export default function App() {
   }
 
   useKeyboardShortcuts({
-    modalOpen: filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || Boolean(confirmRemove),
+    modalOpen: filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || torboxKeyPromptOpen || shortcutsOpen || Boolean(confirmRemove),
     displayedMovies,
     focusedMovieIndex,
     setFocusedMovieIndex,
+    catalogScrollRef: moviePanelScrollRef,
+    onFocusMovie: handleFocusMovie,
     onSelectMovie: handleSelectMovie,
     onFocusSearch: () => searchRef.current?.focus(),
     onOpenSettings: () => openSettings('general'),
+    onOpenShortcuts: () => setShortcutsOpen(true),
     onPlayTopStream: () => {
       if (compactStreams[0]) void playStream(compactStreams[0], 0)
     },
@@ -1363,9 +1525,10 @@ export default function App() {
         setTorboxKeyPromptOpen(false)
         return
       }
-      if (filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || confirmRemove) {
+      if (filtersOpen || downloadsOpen || preferencesOpen || jellyfinSignInOpen || confirmRemove || shortcutsOpen) {
         setJellyfinSignInOpen(false)
         setConfirmRemove(null)
+        setShortcutsOpen(false)
         closeModal()
         return
       }
@@ -1381,7 +1544,7 @@ export default function App() {
   })
 
   const loadNextPage = useCallback(async () => {
-    if (shouldRemoteSearch || loadingMoreMovies || !hasMoreMovies) return
+    if (shouldRemoteSearch || loadingMoreMovies || !hasMoreMovies || catalogError || catalogSkip < catalogPageSize) return
     setLoadingMoreMovies(true)
     try {
       const body = await loadJson<{ metas?: unknown[] }>(catalogPageUrl(filteredCatalogUrl, catalogSkip))
@@ -1395,13 +1558,13 @@ export default function App() {
     } finally {
       setLoadingMoreMovies(false)
     }
-  }, [catalogSkip, contentType, filteredCatalogUrl, hasMoreMovies, loadingMoreMovies, shouldRemoteSearch])
+  }, [catalogError, catalogSkip, contentType, filteredCatalogUrl, hasMoreMovies, loadingMoreMovies, shouldRemoteSearch])
 
   useCatalogScrollLoad({
     scrollRef: moviePanelScrollRef,
     loadMoreRef,
     loadNextPage,
-    enabled: !shouldRemoteSearch && hasMoreMovies && !moviesLoading && !loadingMoreMovies,
+    enabled: !shouldRemoteSearch && hasMoreMovies && !moviesLoading && !loadingMoreMovies && !catalogError && catalogSkip >= catalogPageSize,
     itemCount: displayedMovies.length,
     layoutKey: preferences.libraryViewMode,
   })
@@ -1492,7 +1655,7 @@ export default function App() {
           aria-orientation="vertical"
         />
 
-        <section className="flex min-h-0 min-w-0 flex-col">
+        <section className="relative flex min-h-0 min-w-0 flex-col">
           <header className="mac-toolbar app-mobile-toolbar flex h-14 shrink-0 items-center gap-2 border-b border-[var(--mac-divider,var(--mac-border))] px-3 sm:gap-3 sm:px-4">
             {!isDesktop ? (
               <button
@@ -1577,6 +1740,15 @@ export default function App() {
             </button>
           </header>
 
+          {!isDesktop && (pullDistance > 0 || catalogRefreshing) ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center py-2 text-[11px] font-medium text-[var(--mac-secondary)]"
+              style={{ transform: `translateY(${Math.min(pullDistance, 48)}px)` }}
+            >
+              {catalogRefreshing ? 'Refreshing catalog…' : pullDistance >= 48 ? 'Release to refresh' : 'Pull to refresh'}
+            </div>
+          ) : null}
+
           {preferences.libraryViewMode === 'list' ? (
             <MovieList
               movies={displayedMovies}
@@ -1585,6 +1757,7 @@ export default function App() {
               catalogId={catalogId}
               contentKey={moviesContentKey}
               watchlistIds={watchlistIds}
+              libraryMatches={libraryMatches}
               showYears={preferences.showYears}
               showRatings={preferences.showRatings}
               loading={moviesLoading}
@@ -1593,9 +1766,12 @@ export default function App() {
               shouldRemoteSearch={shouldRemoteSearch}
               scrollRef={moviePanelScrollRef}
               loadMoreRef={loadMoreRef}
+              pullRefreshHandlers={pullRefreshHandlers}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
               onClearFilters={hasActiveSearchOrFilters ? handleClearSearchAndFilters : undefined}
+              onOpenSettings={() => openSettings('general')}
+              onBrowseTrending={() => navigateBrowse(contentType, 'trending')}
             />
           ) : (
             <MovieGrid
@@ -1605,6 +1781,7 @@ export default function App() {
               catalogId={catalogId}
               contentKey={moviesContentKey}
               watchlistIds={watchlistIds}
+              libraryMatches={libraryMatches}
               posterSize={preferences.posterSize}
               showYears={preferences.showYears}
               showRatings={preferences.showRatings}
@@ -1614,9 +1791,12 @@ export default function App() {
               shouldRemoteSearch={shouldRemoteSearch}
               scrollRef={moviePanelScrollRef}
               loadMoreRef={loadMoreRef}
+              pullRefreshHandlers={pullRefreshHandlers}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
               onClearFilters={hasActiveSearchOrFilters ? handleClearSearchAndFilters : undefined}
+              onOpenSettings={() => openSettings('general')}
+              onBrowseTrending={() => navigateBrowse(contentType, 'trending')}
             />
           )}
         </section>
@@ -1641,7 +1821,9 @@ export default function App() {
           onSearchPerson={handleSearchPerson}
           jellyfinMatch={jellyfinMatch}
           jellyfinLoading={jellyfinLoading}
-          jellyfinUrl={jellyfinItemUrl}
+          jellyfinUrl={effectiveDownloadConfig.jellyfinUrl}
+          jellyfinItemUrl={jellyfinItemUrl}
+          onOpenInJellyfin={jellyfinItemUrl ? handleOpenInJellyfin : undefined}
           topStreamQuality={topStreamQuality}
           episodeOptions={seriesEpisodes || []}
           loadingEpisodes={seriesMetaLoading}
@@ -1709,6 +1891,7 @@ export default function App() {
           onRemoveJob={setConfirmRemove}
           onPauseJob={pauseDownloadJob}
           onResumeJob={resumeDownloadJob}
+          onRetryJob={(job) => { void retryDownloadJob(job) }}
         />
         <DownloadDestinationPicker
           open={destinationPickerOpen}
@@ -1748,6 +1931,7 @@ export default function App() {
           onChangeTorboxApiKey={setTorboxApiKey}
           onChangeJellyfinApiKey={setJellyfinApiKey}
           onOpenJellyfinSignIn={openJellyfinSignIn}
+          onImportJellyfinWatchlist={() => { void handleImportJellyfinWatchlist() }}
           onExportSettings={handleExportSettings}
           onImportSettings={handleImportSettings}
           onClearSearchHistory={handleClearSearchHistory}
@@ -1764,31 +1948,42 @@ export default function App() {
             if (file) void handleImportSettingsFile(file)
           }}
         />
-      <JellyfinSignInModal
-        open={jellyfinSignInOpen}
-        onClose={() => {
-          setJellyfinSignInOpen(false)
-          setJellyfinSignInCallback(null)
-        }}
-        onSubmit={async (username, password) => {
-          const baseUrl = jellyfinSignInBaseUrl || effectiveDownloadConfig.jellyfinUrl
-          try {
-            const token = tauri
-              ? await import('@tauri-apps/api/core').then(({ invoke }) => invoke<string>('authenticate_jellyfin', { baseUrl, username, password }))
-              : await postApi<{ token: string }>('/api/jellyfin/auth', { baseUrl, username, password }).then((body) => body.token)
-            if (jellyfinSignInCallback) {
-              jellyfinSignInCallback(token)
-            } else {
-              setJellyfinApiKey(token)
-            }
+        <JellyfinSignInModal
+          open={jellyfinSignInOpen}
+          onClose={() => {
             setJellyfinSignInOpen(false)
             setJellyfinSignInCallback(null)
-            toast.success('Signed in to Jellyfin')
-          } catch (error) {
-            toast.error('Jellyfin sign-in failed', error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
-          }
-        }}
-      />
+          }}
+          onSubmit={async (username, password) => {
+            const baseUrl = jellyfinSignInBaseUrl || effectiveDownloadConfig.jellyfinUrl
+            try {
+              const token = tauri
+                ? await import('@tauri-apps/api/core').then(({ invoke }) => invoke<string>('authenticate_jellyfin', { baseUrl, username, password }))
+                : await postApi<{ token: string }>('/api/jellyfin/auth', { baseUrl, username, password }).then((body) => body.token)
+              if (jellyfinSignInCallback) {
+                jellyfinSignInCallback(token)
+              } else {
+                setJellyfinApiKey(token)
+              }
+              setJellyfinSignInOpen(false)
+              setJellyfinSignInCallback(null)
+              toast.success('Signed in to Jellyfin')
+            } catch (error) {
+              toast.error('Jellyfin sign-in failed', error instanceof Error ? error.message : 'Could not sign in to Jellyfin.')
+            }
+          }}
+        />
+        <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+        <FirstRunSetup
+          open={firstRunOpen}
+          torboxApiKey={torboxApiKey}
+          onChangeTorboxApiKey={setTorboxApiKey}
+          onOpenSettings={() => {
+            dismissFirstRun()
+            openSettings('plugins')
+          }}
+          onDismiss={dismissFirstRun}
+        />
       <ConfirmationDialog
         open={torboxKeyPromptOpen}
         title="Torbox API key required"

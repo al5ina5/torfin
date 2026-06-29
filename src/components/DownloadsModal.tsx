@@ -2,6 +2,7 @@ import { HardDriveDownload, Loader2, Pause, Play } from 'lucide-react'
 
 import { liveMetricsForJob, useLiveDownloadMetrics } from '../hooks/useLiveDownloadMetrics'
 import { bytesLabel, downloadStatusLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
+import { downloadEpisodeLabel } from '../lib/download-groups'
 import type { DownloadJob, DownloadSort } from '../types'
 import { AppModal } from './AppModal'
 import { MoviePoster } from './MoviePoster'
@@ -18,6 +19,7 @@ type DownloadsModalProps = {
   onRemoveJob: (job: DownloadJob) => void
   onPauseJob?: (job: DownloadJob) => void
   onResumeJob?: (job: DownloadJob) => void
+  onRetryJob?: (job: DownloadJob) => void
 }
 
 export function DownloadsModal({
@@ -32,6 +34,7 @@ export function DownloadsModal({
   onRemoveJob,
   onPauseJob,
   onResumeJob,
+  onRetryJob,
 }: DownloadsModalProps) {
   const liveMetrics = useLiveDownloadMetrics(jobs)
   const sortedJobs = sortDownloadJobs(jobs, sort)
@@ -118,7 +121,9 @@ export function DownloadsModal({
               const isPaused = Boolean((job.paused || status?.state === 'paused') && isActiveDownloadJob(job))
               const isStalled = status?.state === 'stalled'
               const title = status?.name ?? job.stream.title
+              const episodeLabel = downloadEpisodeLabel(job)
               const stateLabel = downloadStatusLabel(job)
+              const failed = Boolean(job.error || status?.state.startsWith('error:'))
               const jellyfinReady = stateLabel === 'available in jellyfin'
               const isResolving = !status && !job.error
               return (
@@ -134,9 +139,27 @@ export function DownloadsModal({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold">{job.movie.name}</h3>
+                        <h3 className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                          {job.movie.name}
+                          {episodeLabel ? <span className="font-medium text-[var(--mac-secondary)]"> · {episodeLabel}</span> : null}
+                        </h3>
                         <div className="flex shrink-0 items-center gap-1">
+                          {job.batchLabel ? (
+                            <span className="max-w-[8rem] truncate text-[10px] text-[var(--mac-tertiary)]" title={job.batchLabel}>
+                              {job.batchLabel}
+                            </span>
+                          ) : null}
                           <span className="text-[11px] text-[var(--mac-secondary)]">{progress}%</span>
+                          {failed && onRetryJob ? (
+                            <button
+                              type="button"
+                              onClick={() => onRetryJob(job)}
+                              className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[10px] font-semibold"
+                              title="Retry"
+                            >
+                              Retry
+                            </button>
+                          ) : null}
                           {isPaused && onResumeJob ? (
                             <button
                               type="button"

@@ -27,6 +27,7 @@ const suites = [
 if (includeUi) {
   suites.push(
     { name: 'ui-smoke', cmd: 'node', args: ['scripts/ui-smoke-test.mjs'], env: { UI_SMOKE_URL: url } },
+    { name: 'bug-hunt', cmd: 'node', args: ['scripts/bug-hunt.mjs'], env: { UI_SMOKE_URL: url } },
     { name: 'search-debounce', cmd: 'node', args: ['scripts/test-search-debounce.mjs'], env: { UI_SMOKE_URL: url } },
   )
 }

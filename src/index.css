@@ -1222,6 +1222,77 @@ html[data-theme="dark"] .mac-elevated {
   animation: movie-item-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@property --movie-focus-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes movie-focus-rainbow {
+  to {
+    --movie-focus-angle: 360deg;
+  }
+}
+
+.movie-focus-ring {
+  position: relative;
+  overflow: visible;
+  border-color: transparent !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 14px rgba(77, 150, 255, 0.22);
+}
+
+.movie-poster-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.movie-focus-ring .movie-poster-clip {
+  inset: 4px;
+  border-radius: 4px;
+}
+
+.movie-focus-ring > :not(.movie-poster-clip) {
+  z-index: 3;
+}
+
+.movie-focus-ring::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 4.5px;
+  background: conic-gradient(
+    from var(--movie-focus-angle),
+    #ff5757,
+    #ffb020,
+    #5fd35f,
+    #38b6ff,
+    #7c5cff,
+    #ff5ca8,
+    #ff5757
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: movie-focus-rainbow 2.5s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.movie-focus-ring--outset::before {
+  inset: -4.5px;
+  padding: 4.5px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .movie-item-enter,
   .movie-skeleton-enter,
@@ -1231,125 +1302,9 @@ html[data-theme="dark"] .mac-elevated {
   .movie-poster-skeleton {
     animation: none !important;
   }
-}
 
-/* ── Toast notifications (Sonner) ───────────────────────────────────────── */
-
-[data-sonner-toaster] {
-  --width: min(360px, calc(100vw - 32px));
-  --border-radius: 16px;
-  font-family: inherit;
-}
-
-@media (max-width: 1023px) {
-  [data-sonner-toaster][data-y-position='top'] {
-    top: calc(12px + var(--app-safe-top, 0px)) !important;
-    bottom: auto !important;
+  .movie-focus-ring::before {
+    animation: none;
+    background: var(--mac-accent);
   }
-}
-
-@media (min-width: 1024px) {
-  [data-sonner-toaster][data-y-position='bottom'] {
-    bottom: 20px !important;
-  }
-}
-
-/* Override Sonner's injected light/dark theme tokens with app mac variables */
-[data-sonner-toaster][data-sonner-theme='light'],
-[data-sonner-toaster][data-sonner-theme='dark'] {
-  --normal-bg: var(--mac-elevated) !important;
-  --normal-bg-hover: var(--mac-control-hover) !important;
-  --normal-border: var(--mac-border) !important;
-  --normal-border-hover: var(--mac-border-strong) !important;
-  --normal-text: var(--mac-text) !important;
-
-  --success-bg: color-mix(in srgb, #34c759 12%, var(--mac-elevated)) !important;
-  --success-border: color-mix(in srgb, #34c759 18%, var(--mac-border)) !important;
-  --success-text: var(--mac-text) !important;
-
-  --info-bg: color-mix(in srgb, var(--mac-accent) 12%, var(--mac-elevated)) !important;
-  --info-border: color-mix(in srgb, var(--mac-accent) 18%, var(--mac-border)) !important;
-  --info-text: var(--mac-text) !important;
-
-  --warning-bg: color-mix(in srgb, #ff9500 12%, var(--mac-elevated)) !important;
-  --warning-border: color-mix(in srgb, #ff9500 18%, var(--mac-border)) !important;
-  --warning-text: var(--mac-text) !important;
-
-  --error-bg: color-mix(in srgb, #ff3b30 12%, var(--mac-elevated)) !important;
-  --error-border: color-mix(in srgb, #ff3b30 18%, var(--mac-border)) !important;
-  --error-text: var(--mac-text) !important;
-}
-
-[data-sonner-toast][data-styled='true'] {
-  border-width: 0.5px;
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.03),
-    0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-html[data-theme='dark'] [data-sonner-toast][data-styled='true'],
-html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.18);
-}
-
-@media (prefers-color-scheme: dark) {
-  html[data-theme='system'] [data-sonner-toast][data-styled='true'] {
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.12),
-      0 4px 12px rgba(0, 0, 0, 0.18);
-  }
-}
-
-[data-sonner-toast][data-styled='true'] [data-description] {
-  color: var(--mac-secondary) !important;
-}
-
-[data-sonner-toast][data-styled='true'] [data-close-button] {
-  border-width: 0.5px;
-  border-color: var(--mac-border);
-  background: var(--mac-control);
-  color: var(--mac-secondary);
-  border-radius: 999px;
-}
-
-[data-sonner-toast][data-styled='true'] [data-close-button]:hover {
-  background: var(--mac-control-hover);
-  border-color: var(--mac-border-strong);
-  color: var(--mac-text);
-}
-
-[data-sonner-toast].app-toast {
-  padding: 9px 12px;
-  gap: 2px;
-}
-
-[data-sonner-toast] .app-toast-title {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
-}
-
-[data-sonner-toast] .app-toast-description {
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-[data-sonner-toast].app-toast-success [data-icon] {
-  color: #34c759;
-}
-
-[data-sonner-toast].app-toast-error [data-icon] {
-  color: #ff3b30;
-}
-
-[data-sonner-toast].app-toast-warning [data-icon] {
-  color: #ff9500;
-}
-
-[data-sonner-toast].app-toast-info [data-icon] {
-  color: var(--mac-accent);
 }

@@ -1,5 +1,5 @@
 import { isTauriRuntime, postApi } from './api'
-import type { ContentType, JellyfinLibraryMatch, StreamResult } from '../types'
+import type { ContentType, JellyfinLibraryMatch, Movie, StreamResult } from '../types'
 
 type LookupArgs = {
   baseUrl: string
@@ -8,6 +8,16 @@ type LookupArgs = {
   contentType: ContentType
   season?: number
   episode?: number
+}
+
+type BatchLookupItem = {
+  key: string
+  imdbId: string
+  contentType: ContentType
+}
+
+export function jellyfinLibraryKey(contentType: ContentType, imdbId: string) {
+  return `${contentType}:${imdbId}`
 }
 
 function streamQualityFromText(text: string) {
@@ -62,4 +72,95 @@ export function jellyfinPlayUrl(baseUrl: string, itemId: string) {
   const base = baseUrl.trim().replace(/\/+$/, '')
   if (!base || !itemId) return ''
   return `${base}/web/index.html#!/details?id=${encodeURIComponent(itemId)}`
+}
+
+export async function batchLookupJellyfinLibrary(args: {
+  baseUrl: string
+  apiKey: string
+  items: BatchLookupItem[]
+}): Promise<Record<string, JellyfinLibraryMatch | null>> {
+  const { baseUrl, apiKey, items } = args
+  if (!baseUrl.trim() || !apiKey.trim() || !items.length) return {}
+
+  if (!isTauriRuntime()) {
+    return postApi<Record<string, JellyfinLibraryMatch | null>>('/api/jellyfin/batch-lookup', {
+      baseUrl,
+      apiKey,
+      items,
+    })
+  }
+
+  const matches: Record<string, JellyfinLibraryMatch | null> = {}
+  const concurrency = 4
+  let index = 0
+  async function worker() {
+    while (index < items.length) {
+      const current = items[index]
+      index += 1
+      if (!current) continue
+      matches[current.key] = await lookupJellyfinLibrary({
+        baseUrl,
+        apiKey,
+        imdbId: current.imdbId,
+        contentType: current.contentType,
+      })
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
+  return matches
+}
+
+export async function lookupJellyfinSeasonEpisodes(args: {
+  baseUrl: string
+  apiKey: string
+  imdbId: string
+  season: number
+}): Promise<Array<{ episode: number; match: JellyfinLibraryMatch }>> {
+  const { baseUrl, apiKey, imdbId, season } = args
+  if (!baseUrl.trim() || !apiKey.trim() || !imdbId.trim()) return []
+
+  if (!isTauriRuntime()) {
+    return postApi<Array<{ episode: number; match: JellyfinLibraryMatch }>>('/api/jellyfin/season-episodes', {
+      baseUrl,
+      apiKey,
+      imdbId,
+      season,
+    })
+  }
+
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<Array<{ episode: number; match: JellyfinLibraryMatch }>>('lookup_jellyfin_season_episodes', {
+    baseUrl,
+    apiKey,
+    imdbId,
+    season,
+  }).catch(() => [])
+}
+
+export async function fetchJellyfinFavorites(args: {
+  baseUrl: string
+  apiKey: string
+}): Promise<Movie[]> {
+  const { baseUrl, apiKey } = args
+  if (!baseUrl.trim() || !apiKey.trim()) return []
+
+  if (!isTauriRuntime()) {
+    const items = await postApi<Array<{ id: string; type: ContentType; name: string; releaseInfo?: string }>>(
+      '/api/jellyfin/favorites',
+      { baseUrl, apiKey },
+    )
+    return items.map((item) => ({ ...item, type: item.type === 'series' ? 'series' : 'movie' }))
+  }
+
+  const { invoke } = await import('@tauri-apps/api/core')
+  const items = await invoke<Array<{ id: string; type: string; name: string; releaseInfo?: string }>>('fetch_jellyfin_favorites', {
+    baseUrl,
+    apiKey,
+  }).catch(() => [])
+  return items.map((item) => ({
+    id: item.id,
+    type: item.type === 'series' ? 'series' : 'movie',
+    name: item.name,
+    releaseInfo: item.releaseInfo,
+  }))
 }

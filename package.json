@@ -4,8 +4,7 @@
   "version": "1.0.0-beta",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:full": "concurrently -k -n web,api -c green,blue \"vite dev\" \"PORT=3020 node server.mjs\"",
+    "dev": "concurrently -k -n web,api -c green,blue \"vite\" \"PORT=3020 NODE_ENV=development node server.mjs\"",
     "tauri:dev": "tauri dev",
     "generate:pwa-splash": "node scripts/generate-pwa-splash.mjs",
     "build": "npm run generate:pwa-splash && tsc -b && vite build",
@@ -15,6 +14,8 @@
     "test": "vitest run",
     "test:web-downloads": "node scripts/test-web-downloads.mjs",
     "test:ui": "node scripts/ui-smoke-test.mjs",
+    "test:bug-hunt": "node scripts/bug-hunt.mjs",
+    "test:ui:all": "node scripts/ui-smoke-test.mjs && node scripts/bug-hunt.mjs",
     "test:transcode": "node scripts/test-transcode-pipeline.mjs",
     "test:server-api": "node scripts/test-server-api.mjs",
     "test:stability": "npm run lint && npm run test && npm run build && npm run test:transcode && npm run test:web-downloads && npm run test:server-api",

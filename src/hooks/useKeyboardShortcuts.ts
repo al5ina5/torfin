@@ -1,5 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, type RefObject } from 'react'
 
+import {
+  resolveCatalogNavigationIndex,
+  scrollCatalogItemIntoView,
+  type CatalogNavigationDirection,
+} from '../lib/catalog-grid-navigation'
 import type { Movie, StreamResult } from '../types'
 
 type UseKeyboardShortcutsArgs = {
@@ -7,9 +12,12 @@ type UseKeyboardShortcutsArgs = {
   displayedMovies: Movie[]
   focusedMovieIndex: number
   setFocusedMovieIndex: (index: number) => void
+  catalogScrollRef: RefObject<HTMLDivElement | null>
+  onFocusMovie: (movie: Movie) => void
   onSelectMovie: (movie: Movie) => void
   onFocusSearch: () => void
   onOpenSettings: () => void
+  onOpenShortcuts: () => void
   onPlayTopStream: () => void
   onCloseModals: () => void
   compactStreams: StreamResult[]
@@ -26,12 +34,15 @@ export function useKeyboardShortcuts({
   displayedMovies,
   focusedMovieIndex,
   setFocusedMovieIndex,
+  onFocusMovie,
   onSelectMovie,
   onFocusSearch,
   onOpenSettings,
+  onOpenShortcuts,
   onPlayTopStream,
   onCloseModals,
   compactStreams,
+  catalogScrollRef,
 }: UseKeyboardShortcutsArgs) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -56,41 +67,67 @@ export function useKeyboardShortcuts({
         onCloseModals()
         return
       }
+      if (event.key === '?' && !meta) {
+        event.preventDefault()
+        onOpenShortcuts()
+        return
+      }
 
       if (modalOpen || isEditableTarget(event.target)) return
 
-      if (event.key === 'Enter' && compactStreams.length) {
-        event.preventDefault()
-        onPlayTopStream()
-        return
+      if (event.key === 'Enter') {
+        if (compactStreams.length) {
+          event.preventDefault()
+          onPlayTopStream()
+          return
+        }
+        const focusedMovie = displayedMovies[focusedMovieIndex < 0 ? 0 : focusedMovieIndex]
+        if (focusedMovie) {
+          event.preventDefault()
+          onSelectMovie(focusedMovie)
+          return
+        }
       }
 
       if (!displayedMovies.length) return
 
-      const columns = Math.max(1, Math.floor(window.innerWidth / 180))
-      let next = focusedMovieIndex
+      const directionByKey: Record<string, CatalogNavigationDirection> = {
+        ArrowRight: 'right',
+        ArrowLeft: 'left',
+        ArrowDown: 'down',
+        ArrowUp: 'up',
+      }
+      const direction = directionByKey[event.key]
+      if (!direction) return
 
-      if (event.key === 'ArrowRight') next = Math.min(displayedMovies.length - 1, focusedMovieIndex + 1)
-      else if (event.key === 'ArrowLeft') next = Math.max(0, focusedMovieIndex - 1)
-      else if (event.key === 'ArrowDown') next = Math.min(displayedMovies.length - 1, focusedMovieIndex + columns)
-      else if (event.key === 'ArrowUp') next = Math.max(0, focusedMovieIndex - columns)
-      else return
+      const currentIndex = focusedMovieIndex < 0 ? 0 : focusedMovieIndex
+      const next = resolveCatalogNavigationIndex(
+        catalogScrollRef.current,
+        currentIndex,
+        direction,
+        displayedMovies.length,
+      )
+      if (next === currentIndex) return
 
       event.preventDefault()
       setFocusedMovieIndex(next)
-      onSelectMovie(displayedMovies[next]!)
+      scrollCatalogItemIntoView(catalogScrollRef.current, next)
+      onFocusMovie(displayedMovies[next]!)
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [
+    catalogScrollRef,
     compactStreams.length,
     displayedMovies,
     focusedMovieIndex,
     modalOpen,
     onCloseModals,
+    onFocusMovie,
     onFocusSearch,
     onOpenSettings,
+    onOpenShortcuts,
     onPlayTopStream,
     onSelectMovie,
     setFocusedMovieIndex,
