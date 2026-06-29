@@ -7,7 +7,6 @@
  *   .env.deploy      — generic deploy config
  */
 
-import { randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
