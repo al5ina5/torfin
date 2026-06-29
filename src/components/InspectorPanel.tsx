@@ -37,6 +37,7 @@ type InspectorPanelProps = {
   playbackTitle: string
   playbackStatus: string
   playbackStartAt: number | null
+  playbackDuration: number | null
   mediaInfo: MediaInfo | null
   selectedAudioIndex: number | null
   selectedSubtitleIndex: number | null
@@ -91,6 +92,7 @@ function InspectorContent({
   playbackTitle,
   playbackStatus,
   playbackStartAt,
+  playbackDuration,
   mediaInfo,
   selectedAudioIndex,
   selectedSubtitleIndex,
@@ -323,6 +325,7 @@ function InspectorContent({
                 title={playbackTitle}
                 autoPlay
                 startAt={playbackStartAt}
+                knownDuration={playbackDuration ?? mediaInfo?.duration ?? null}
                 mediaInfo={mediaInfo}
                 selectedAudioIndex={selectedAudioIndex}
                 selectedSubtitleIndex={selectedSubtitleIndex}

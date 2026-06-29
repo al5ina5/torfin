@@ -188,6 +188,7 @@ export default function App() {
   const [playbackError, setPlaybackError] = useState('')
   const [playbackStatus, setPlaybackStatus] = useState('')
   const [playbackStartAt, setPlaybackStartAt] = useState<number | null>(null)
+  const [playbackDuration, setPlaybackDuration] = useState<number | null>(null)
   const [focusedMovieIndex, setFocusedMovieIndex] = useState(0)
   const [batchDownloading, setBatchDownloading] = useState(false)
   const [enrichedMovie, setEnrichedMovie] = useState<Movie | null>(null)
@@ -455,6 +456,7 @@ export default function App() {
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
+    setPlaybackDuration(null)
   }, [route.title, selectedMovie])
 
   useEffect(() => {
@@ -916,9 +918,10 @@ export default function App() {
         sourceUrl = await refreshActiveSourceUrl()
         setCurrentSourceUrl(sourceUrl)
       }
-      const hlsUrl = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)
+      const result = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(resolvePlaybackUrl(hlsUrl))
+      setPlaybackUrl(resolvePlaybackUrl(result.url))
+      setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
@@ -961,12 +964,16 @@ export default function App() {
     setPlaybackUrl('')
     setPlaybackTitle(title)
     setPlaybackStartAt(resumeAt)
+    setPlaybackDuration(null)
     setSelectedAudioIndex(audioIndex)
     setSelectedSubtitleIndex(subtitleIndex)
 
     void inspectMedia(sourceUrl).then((info) => {
       if (generation !== playbackGenerationRef.current) return
       setMediaInfo(info)
+      if (info?.duration) {
+        setPlaybackDuration((current) => current ?? info.duration ?? null)
+      }
       if (audioIndex === null && info?.audioTracks[0]?.index !== undefined) {
         setSelectedAudioIndex(info.audioTracks[0].index)
       }
@@ -975,15 +982,17 @@ export default function App() {
     if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
+      setPlaybackDuration(mediaInfo?.duration ?? null)
       setPlaybackStatus('')
       return
     }
 
     setPlaybackStatus(audioIndex === null && subtitleIndex === null ? 'Transcoding' : 'Preparing')
     try {
-      const hlsUrl = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex)
+      const result = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex)
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(resolvePlaybackUrl(hlsUrl))
+      setPlaybackUrl(resolvePlaybackUrl(result.url))
+      setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
       setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
@@ -1259,6 +1268,7 @@ export default function App() {
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
+    setPlaybackDuration(null)
     setNextEpisodePrompt(null)
   }
 
@@ -1588,6 +1598,7 @@ export default function App() {
           playbackTitle={playbackTitle}
           playbackStatus={playbackStatus}
           playbackStartAt={playbackStartAt}
+          playbackDuration={playbackDuration}
           mediaInfo={mediaInfo}
           selectedAudioIndex={selectedAudioIndex}
           selectedSubtitleIndex={selectedSubtitleIndex}

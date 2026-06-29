@@ -295,6 +295,12 @@ export type HlsTranscodeProgress = {
   playlistReady: boolean
   transcodedSeconds: number
   processRunning: boolean
+  duration?: number | null
+}
+
+export type HlsTranscodeResult = {
+  url: string
+  duration?: number | null
 }
 
 export type SeriesMetaEpisode = {

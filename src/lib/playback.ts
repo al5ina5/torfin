@@ -1,5 +1,5 @@
 import { isTauriRuntime, postApi } from './api'
-import type { HlsTranscodeProgress, MediaInfo } from '../types'
+import type { HlsTranscodeProgress, HlsTranscodeResult, MediaInfo } from '../types'
 
 const BROWSER_PLAYABLE_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.m3u8', '.webm']
 const NON_BROWSER_EXTENSIONS = ['.mkv', '.avi']
@@ -46,22 +46,22 @@ export async function startHlsTranscode(
   sourceUrl: string,
   audioStreamIndex: number | null = null,
   subtitleStreamIndex: number | null = null,
-): Promise<string> {
+): Promise<HlsTranscodeResult> {
   if (isTauriRuntime()) {
     const { invoke } = await import('@tauri-apps/api/core')
-    return invoke<string>('start_hls_transcode', {
+    const url = await invoke<string>('start_hls_transcode', {
       url: sourceUrl,
       audioStreamIndex,
       subtitleStreamIndex,
     })
+    return { url }
   }
 
-  const body = await postApi<{ url: string }>('/api/start-hls-transcode', {
+  return postApi<HlsTranscodeResult>('/api/start-hls-transcode', {
     url: sourceUrl,
     audioStreamIndex,
     subtitleStreamIndex,
   })
-  return body.url
 }
 
 export async function getHlsTranscodeProgress(): Promise<HlsTranscodeProgress> {
@@ -71,6 +71,7 @@ export async function getHlsTranscodeProgress(): Promise<HlsTranscodeProgress> {
     playlistReady: false,
     transcodedSeconds: 0,
     processRunning: false,
+    duration: null,
   }
 
   if (isTauriRuntime()) {

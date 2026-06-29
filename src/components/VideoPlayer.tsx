@@ -10,6 +10,7 @@ type VideoPlayerProps = {
   title: string
   autoPlay?: boolean
   startAt?: number | null
+  knownDuration?: number | null
   mediaInfo: MediaInfo | null
   selectedAudioIndex: number | null
   selectedSubtitleIndex: number | null
@@ -53,15 +54,37 @@ function destroyPlayer(player: ReturnType<typeof videojs>, host: HTMLDivElement 
   host?.replaceChildren()
 }
 
+function disableLiveMode(player: ReturnType<typeof videojs>) {
+  player.removeClass('vjs-live')
+  player.removeClass('vjs-liveui')
+  const liveTracker = (player as { liveTracker?: { stopTracking(): void } }).liveTracker
+  liveTracker?.stopTracking()
+}
+
+function applyKnownDuration(player: ReturnType<typeof videojs>, knownDuration: number | null | undefined) {
+  if (!knownDuration || knownDuration <= 0) return
+
+  disableLiveMode(player)
+
+  const nativeDuration = player.duration.bind(player)
+  player.duration = function duration(value?: number) {
+    if (value !== undefined) return nativeDuration(value)
+    const reported = nativeDuration()
+    if (reported === undefined || !Number.isFinite(reported) || reported === Infinity || reported <= 0) {
+      return knownDuration
+    }
+    return reported
+  }
+}
+
 function buildPlayerOptions(autoPlay: boolean, url: string) {
   const type = sourceType(url)
-  const isHls = type === 'application/x-mpegURL'
   return {
     autoplay: autoPlay,
     controls: true,
     fill: true,
     fluid: false,
-    liveui: isHls,
+    liveui: false,
     responsive: false,
     playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
     controlBar: {
@@ -78,8 +101,7 @@ function buildPlayerOptions(autoPlay: boolean, url: string) {
       },
     },
     liveTracker: {
-      trackingThreshold: 0,
-      liveTolerance: 20,
+      trackingThreshold: Number.POSITIVE_INFINITY,
     },
     sources: [type ? { src: url, type } : { src: url }],
   }
@@ -111,6 +133,7 @@ export function VideoPlayer({
   title,
   autoPlay = true,
   startAt = null,
+  knownDuration = null,
   mediaInfo,
   selectedAudioIndex,
   selectedSubtitleIndex,
@@ -126,10 +149,12 @@ export function VideoPlayer({
   const onErrorRef = useRef(onError)
   const onTimeUpdateRef = useRef(onTimeUpdate)
   const onEndedRef = useRef(onEnded)
+  const durationRef = useRef(knownDuration ?? mediaInfo?.duration ?? null)
 
   onErrorRef.current = onError
   onTimeUpdateRef.current = onTimeUpdate
   onEndedRef.current = onEnded
+  durationRef.current = knownDuration ?? mediaInfo?.duration ?? null
 
   useEffect(() => {
     if (!url || !hostRef.current) return
@@ -175,18 +200,27 @@ export function VideoPlayer({
         el.setAttribute('webkit-playsinline', 'true')
       }
       insertAirPlayButton(player)
+      applyKnownDuration(player, durationRef.current)
       applyStartAt(player, startAt)
     })
+
+    const handleDurationChange = () => {
+      applyKnownDuration(player, durationRef.current)
+    }
+    player.on('durationchange', handleDurationChange)
+    player.on('loadedmetadata', handleDurationChange)
 
     return () => {
       ignoreErrorsRef.current = true
       player.off('error', handleError)
       player.off('timeupdate', handleTimeUpdate)
       player.off('ended', handleEnded)
+      player.off('durationchange', handleDurationChange)
+      player.off('loadedmetadata', handleDurationChange)
       destroyPlayer(player, host)
       if (playerRef.current === player) playerRef.current = null
     }
-  }, [autoPlay, startAt, url])
+  }, [autoPlay, knownDuration, mediaInfo?.duration, startAt, url])
 
   if (!url) return null
 

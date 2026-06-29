@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
-/** @type {Map<string, { dir: string, process: import('node:child_process').ChildProcessWithoutNullStreams | null }>} */
+/** @type {Map<string, { dir: string, process: import('node:child_process').ChildProcessWithoutNullStreams | null, duration: number | null }>} */
 const sessions = new Map()
 
 const PROXY_USER_AGENT = 'Torfin/1.0.0-beta'
@@ -40,8 +40,8 @@ const FFMPEG_HTTP_ARGS = [
   PROXY_USER_AGENT,
 ]
 
-function findFfmpeg() {
-  for (const cmd of ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg', 'ffmpeg']) {
+function findBinary(candidates) {
+  for (const cmd of candidates) {
     try {
       execFileSync(cmd, ['-version'], { stdio: 'ignore' })
       return cmd
@@ -50,6 +50,37 @@ function findFfmpeg() {
     }
   }
   return null
+}
+
+function findFfmpeg() {
+  return findBinary(['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg', 'ffmpeg'])
+}
+
+function findFfprobe() {
+  return findBinary(['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/usr/bin/ffprobe', 'ffprobe'])
+}
+
+function probeDuration(sourceUrl) {
+  const ffprobe = findFfprobe()
+  if (!ffprobe) return null
+
+  const args = [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+  ]
+  if (isRemoteUrl(sourceUrl)) {
+    args.push('-user_agent', PROXY_USER_AGENT)
+  }
+  args.push('-i', sourceUrl)
+
+  try {
+    const output = execFileSync(ffprobe, args, { encoding: 'utf8', timeout: 30000 }).trim()
+    const duration = Number.parseFloat(output.split('\n')[0] || '')
+    return Number.isFinite(duration) && duration > 0 ? duration : null
+  } catch {
+    return null
+  }
 }
 
 export function isFfmpegAvailable() {
@@ -157,7 +188,7 @@ function buildFfmpegArgs(sourceUrl, audioStreamIndex, subtitleStreamIndex, segme
     '-hls_list_size',
     '0',
     '-hls_playlist_type',
-    'event',
+    'vod',
     '-hls_flags',
     'independent_segments+append_list',
     '-hls_segment_filename',
@@ -218,6 +249,7 @@ async function startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStream
   const sessionId = randomUUID()
   const sessionDir = join(tmpdir(), `torfin-hls-${sessionId}`)
   mkdirSync(sessionDir, { recursive: true })
+  const duration = probeDuration(sourceUrl)
 
   const playlist = join(sessionDir, 'playlist.m3u8')
   const firstSegment = join(sessionDir, 'segment_00000.ts')
@@ -237,7 +269,7 @@ async function startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStream
     }
   })
 
-  sessions.set(sessionId, { dir: sessionDir, process: child })
+  sessions.set(sessionId, { dir: sessionDir, process: child, duration })
 
   try {
     await waitForPlaylist(playlist, firstSegment, child, stderrChunks)
@@ -246,7 +278,10 @@ async function startHlsTranscodeOnce(sourceUrl, audioStreamIndex, subtitleStream
     throw error
   }
 
-  return `/api/hls-transcode/${sessionId}/playlist.m3u8`
+  return {
+    url: `/api/hls-transcode/${sessionId}/playlist.m3u8`,
+    duration,
+  }
 }
 
 function countHlsSegments(sessionDir) {
@@ -273,6 +308,7 @@ export function getHlsTranscodeProgress() {
       playlistReady: false,
       transcodedSeconds: 0,
       processRunning: false,
+      duration: null,
     }
   }
 
@@ -287,6 +323,7 @@ export function getHlsTranscodeProgress() {
     playlistReady: isPlaylistReady(playlist, firstSegment),
     transcodedSeconds: segmentCount * HLS_SEGMENT_DURATION_SECS,
     processRunning,
+    duration: session.duration ?? null,
   }
 }
 
@@ -348,11 +385,16 @@ export async function serveHlsTranscodeFile(pathname, response) {
       ? 'video/mp2t'
       : 'application/octet-stream'
 
-  response.writeHead(200, {
+  const headers = {
     'content-type': contentType,
     'access-control-allow-origin': '*',
     'cache-control': 'no-store',
-  })
+  }
+  if (session.duration && session.duration > 0) {
+    headers['x-torfin-duration'] = String(session.duration)
+  }
+
+  response.writeHead(200, headers)
   createReadStream(filePath).pipe(response)
   return true
 }

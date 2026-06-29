@@ -1466,9 +1466,8 @@ async function handleApi(request, response, pathname) {
     return
   }
   if (pathname === '/api/start-hls-transcode' && request.method === 'POST') {
-    sendJson(response, 200, {
-      url: await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null),
-    })
+    const result = await startHlsTranscode(body.url, body.audioStreamIndex ?? null, body.subtitleStreamIndex ?? null)
+    sendJson(response, 200, result)
     return
   }
   if (pathname === '/api/hls-transcode-progress' && request.method === 'GET') {
