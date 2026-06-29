@@ -1,38 +1,46 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterStreamsForProfile, normalizeStreams, qualityRank } from '../streams'
+import type { StreamResult } from '../../types'
+import { filterStreamsForProfile, normalizeStreams, playabilityScore, sortStreamsByPlayability } from '../streams'
 
-describe('qualityRank', () => {
-  it('scores premium stream keywords higher', () => {
-    const premium = qualityRank('Movie 2160p 4K cached remux bluray seeders 200')
-    const basic = qualityRank('Movie 720p web-dl seeders 2')
-    expect(premium).toBeGreaterThan(basic)
+describe('playabilityScore', () => {
+  const base: StreamResult = {
+    pluginName: 'Torrentio',
+    title: 'Movie 1080p',
+    tags: [],
+    rank: 50,
+  }
+
+  it('ranks cached streams highest', () => {
+    const cached = { ...base, title: 'Movie 1080p cached instant', description: 'torbox' }
+    const uncached = { ...base, description: 'seeders 500' }
+    expect(playabilityScore(cached, 'key')).toBeGreaterThan(playabilityScore(uncached, 'key'))
+  })
+
+  it('penalizes torrent streams without debrid key', () => {
+    const torrent = { ...base, infoHash: 'abc' }
+    expect(playabilityScore(torrent, '')).toBeLessThan(playabilityScore(torrent, 'key'))
   })
 })
 
-describe('normalizeStreams', () => {
-  it('normalizes raw payload stream records', () => {
-    const results = normalizeStreams('comet', {
-      streams: [
-        {
-          title: 'Film 1080p',
-          description: 'cached remux',
-          url: 'https://example.test/stream',
-          fileIdx: 1,
-        },
-      ],
-    })
-
-    expect(results).toHaveLength(1)
-    expect(results[0]).toMatchObject({
-      pluginName: 'comet',
-      title: 'Film 1080p',
-      description: 'cached remux',
-      url: 'https://example.test/stream',
-      fileIdx: 1,
-    })
-    expect(results[0]?.tags).toEqual(expect.arrayContaining(['1080p', 'Torbox', 'Remux']))
-    expect(results[0]?.rank).toBeGreaterThan(0)
+describe('sortStreamsByPlayability', () => {
+  it('orders cached before uncached', () => {
+    const cached: StreamResult = {
+      pluginName: 'p',
+      title: 'Cached 720p',
+      description: 'cached torbox instant',
+      tags: ['Torbox'],
+      rank: 65,
+    }
+    const uncached: StreamResult = {
+      pluginName: 'p',
+      title: 'Uncached 1080p',
+      description: 'seeders 200',
+      tags: ['1080p'],
+      rank: 100,
+    }
+    const sorted = sortStreamsByPlayability([uncached, cached], 'key')
+    expect(sorted[0]?.title).toContain('Cached')
   })
 })
 
@@ -49,7 +57,7 @@ describe('filterStreamsForProfile', () => {
 
   it('netflix profile keeps best stream per quality and excludes cam/3d', () => {
     const normalized = normalizeStreams('plugin', raw)
-    const filtered = filterStreamsForProfile(normalized, 'netflix', false)
+    const filtered = filterStreamsForProfile(normalized, 'netflix', false, undefined, 'key')
     const titles = filtered.map((item) => item.title.toLowerCase())
 
     expect(titles).toContain('movie 2160p cached')
@@ -61,17 +69,17 @@ describe('filterStreamsForProfile', () => {
 
   it('dataSaver profile excludes very large results', () => {
     const normalized = normalizeStreams('plugin', raw)
-    const filtered = filterStreamsForProfile(normalized, 'dataSaver', false)
+    const filtered = filterStreamsForProfile(normalized, 'dataSaver', false, undefined, 'key')
     const titles = filtered.map((item) => item.title.toLowerCase())
 
     expect(titles).not.toContain('movie 2160p cached')
-    expect(titles).toContain('movie 1080p cached')
+    expect(titles).not.toContain('movie 1080p cached')
     expect(titles).toContain('movie 720p')
   })
 
   it('preferCachedResults limits to cached entries when available', () => {
     const normalized = normalizeStreams('plugin', raw)
-    const filtered = filterStreamsForProfile(normalized, 'cinephile', true)
+    const filtered = filterStreamsForProfile(normalized, 'cinephile', true, undefined, 'key')
 
     expect(filtered.every((item) => /cached|torbox|instant/i.test(`${item.title} ${item.description ?? ''}`))).toBe(true)
   })

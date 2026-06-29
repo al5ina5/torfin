@@ -79,7 +79,7 @@ import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbac
 import { isMacTauri, openNativePlayer } from './lib/native-player'
 import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinSeasonEpisodes, fetchJellyfinFavorites, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
-import { filterStreamsForProfile, normalizeStreams } from './lib/streams'
+import { filterStreamsForProfile, normalizeStreams, sortStreamsByPlayability } from './lib/streams'
 import { streamDirectUrl, streamNeedsTorboxResolve } from './lib/streams-display'
 import { buildMagnetLink, saveTorrentExport, shouldExportTorrent, usesMediaImportPath } from './lib/torrent-export'
 import { STORAGE_KEYS, loadStoredJson, loadStoredString, saveStoredJson, saveStoredString } from './lib/storage'
@@ -339,7 +339,7 @@ export default function App() {
       if (result.status === 'fulfilled') found.push(...result.value)
       else errors.push(`${activePlugins[index]?.name || 'Plugin'}: ${String(result.reason)}`)
     })
-    return { streams: found.sort((a, b) => b.rank - a.rank), errors }
+    return { streams: sortStreamsByPlayability(found, torboxApiKey), errors }
   })
   const { data: serverStatuses } = useSWR(tauri ? null : '/api/downloads', loadServerDownloads, {
     refreshInterval: 500,
@@ -704,11 +704,15 @@ export default function App() {
   }, [catalogId, movies, movieFilters, query, searchData, shouldRemoteSearch])
   const hasActiveSearchOrFilters =
     Boolean(query.trim()) || Object.values(movieFilters).some((value) => value && value !== 'catalog')
-  const compactStreams = useMemo(() => {
-    const filtered = filterStreamsForProfile(streams, resultProfile, preferences.preferCachedResults, activeCustomProfile)
-    const limit = preferences.compactResultsLimit
-    return filtered.length ? filtered.slice(0, limit) : streams.slice(0, limit)
-  }, [activeCustomProfile, preferences.compactResultsLimit, preferences.preferCachedResults, resultProfile, streams])
+  const profileStreams = useMemo(() => {
+    const filtered = filterStreamsForProfile(streams, resultProfile, preferences.preferCachedResults, activeCustomProfile, torboxApiKey)
+    if (filtered.length) return filtered
+    return sortStreamsByPlayability(streams, torboxApiKey)
+  }, [activeCustomProfile, preferences.preferCachedResults, resultProfile, streams, torboxApiKey])
+  const compactStreams = useMemo(
+    () => profileStreams.slice(0, preferences.compactResultsLimit),
+    [preferences.compactResultsLimit, profileStreams],
+  )
 
   const jellyfinApiKeyValue = jellyfinApiKey || downloadConfig.jellyfinApiKey
   const { libraryMatches } = useJellyfinCatalogStatus({
@@ -1472,7 +1476,7 @@ export default function App() {
           }),
         )
         const found = urlResults.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
-        const best = filterStreamsForProfile(found.sort((a, b) => b.rank - a.rank), resultProfile, preferences.preferCachedResults, activeCustomProfile)[0]
+        const best = filterStreamsForProfile(found.sort((a, b) => b.rank - a.rank), resultProfile, preferences.preferCachedResults, activeCustomProfile, torboxApiKey)[0]
         if (best) {
           await queueDownload(
             best,
@@ -2046,7 +2050,7 @@ export default function App() {
           onEpisodeChange={handleEpisodeChange}
           onDownloadSeason={() => { void downloadSeason() }}
           batchDownloading={batchDownloading}
-          streams={streams}
+          streams={profileStreams}
           compactStreams={compactStreams}
           profileOptions={profileOptions}
           loadingStreams={streamsLoading}

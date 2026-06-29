@@ -6,6 +6,8 @@
  *   UI_SMOKE_URL=http://127.0.0.1:5173 npm run test:ui
  */
 
+import { smokeTestInitScript } from './smoke-test-init.mjs'
+
 const DEFAULT_URL = process.env.UI_SMOKE_URL || 'http://127.0.0.1:3020/'
 
 async function fetchText(url) {
@@ -47,10 +49,7 @@ async function runWithPlaywright(url) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 
   try {
-    await page.addInitScript(() => {
-      localStorage.setItem('torfin:first-run-dismissed', '1')
-      localStorage.setItem('torfin.legal-notice-accepted', '1')
-    })
+    await page.addInitScript(smokeTestInitScript)
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await page.waitForTimeout(2000)
 
@@ -103,7 +102,7 @@ async function runWithPlaywright(url) {
 
     // Stream cards should expose play/download controls when results load
     await page.waitForTimeout(3000)
-    const playButtons = page.getByTitle('Play with Torbox')
+    const playButtons = page.getByTitle(/Play stream|Play with debrid/)
     if ((await playButtons.count()) > 0) {
       await playButtons.first().waitFor({ state: 'visible' })
     }

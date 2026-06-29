@@ -14,7 +14,7 @@ import {
 import type { ResultProfile, StreamResult } from '../types'
 
 type StreamResultsProps = {
-  streams: StreamResult[]
+  profileStreams: StreamResult[]
   compactStreams: StreamResult[]
   loading: boolean
   profile: ResultProfile
@@ -32,7 +32,7 @@ type StreamResultsProps = {
 }
 
 export function StreamResults({
-  streams,
+  profileStreams,
   compactStreams,
   loading,
   profile,
@@ -48,7 +48,8 @@ export function StreamResults({
   onPlay,
   onDownload,
 }: StreamResultsProps) {
-  const visibleStreams = resultsExpanded ? streams : compactStreams
+  const visibleStreams = resultsExpanded ? profileStreams : compactStreams
+  const hasMoreResults = profileStreams.length > compactStreams.length
 
   return (
     <div>
@@ -88,13 +89,13 @@ export function StreamResults({
         <div className="grid h-20 place-items-center rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)]">
           <Loader2 className="animate-spin text-[var(--mac-accent)]" />
         </div>
-      ) : streams.length ? (
+      ) : profileStreams.length || compactStreams.length ? (
         <div>
           <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--mac-secondary)]">
             <span>
-              Showing {visibleStreams.length} of {streams.length}
+              Showing {visibleStreams.length} of {profileStreams.length}
             </span>
-            {compactStreams.length !== streams.length ? (
+            {hasMoreResults ? (
               <button
                 type="button"
                 onClick={onToggleExpanded}

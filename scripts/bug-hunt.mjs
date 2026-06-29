@@ -1,6 +1,8 @@
 /**
  * Aggressive navigation bug hunt — collects console errors and page errors.
  */
+import { smokeTestInitScript } from './smoke-test-init.mjs'
+
 const BASE_URL = process.env.UI_SMOKE_URL || 'http://127.0.0.1:3026/'
 
 async function main() {
@@ -26,10 +28,7 @@ async function main() {
     }
   }
 
-  await page.addInitScript(() => {
-    localStorage.setItem('torfin:first-run-dismissed', '1')
-    localStorage.setItem('torfin.legal-notice-accepted', '1')
-  })
+  await page.addInitScript(smokeTestInitScript)
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 })
 
   await step('load home', async () => {

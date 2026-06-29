@@ -1,7 +1,7 @@
 {
   "name": "torfin",
   "private": false,
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.4",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,api -c green,blue \"vite\" \"PORT=3020 NODE_ENV=development node server.mjs\"",

@@ -1,4 +1,33 @@
+import { streamDirectUrl } from './streams-display'
 import type { CustomStreamProfile, ResultProfile, StreamResult } from '../types/index.js'
+
+function parseStreamPeers(stream: StreamResult) {
+  const haystack = `${stream.title}\n${stream.description ?? ''}`
+  const emojiMatch = haystack.match(/(?:👤|👥)\s*(\d[\d,]*)/u)
+  if (emojiMatch?.[1]) return Number(emojiMatch[1].replace(/,/g, ''))
+  const wordMatch = haystack.match(/\b(?:seeders|seeds|peers)\D{0,12}(\d[\d,]*)/i)
+  if (wordMatch?.[1]) return Number(wordMatch[1].replace(/,/g, ''))
+  return Number.NaN
+}
+
+/** Higher = more likely to play successfully. Cached and direct URLs rank first. */
+export function playabilityScore(stream: StreamResult, torboxApiKey: string) {
+  let score = stream.rank
+  if (isStreamCached(stream)) score += 1000
+  if (streamDirectUrl(stream)) score += 500
+  if (stream.infoHash || stream.url?.startsWith('magnet:')) {
+    score += torboxApiKey.trim() ? 200 : -500
+  }
+  if (!isStreamCached(stream)) {
+    const peers = parseStreamPeers(stream)
+    if (Number.isFinite(peers)) score += Math.min(peers, 50) * 4
+  }
+  return score
+}
+
+export function sortStreamsByPlayability(streams: StreamResult[], torboxApiKey: string) {
+  return [...streams].sort((a, b) => playabilityScore(b, torboxApiKey) - playabilityScore(a, torboxApiKey))
+}
 
 export function qualityRank(text: string) {
   const haystack = text.toLowerCase()
@@ -53,7 +82,9 @@ function streamSizeGb(stream: StreamResult) {
 }
 
 export function isStreamCached(stream: StreamResult) {
-  return /cached|instant|torbox/i.test(streamText(stream))
+  const haystack = streamText(stream)
+  if (/\buncached\b/i.test(haystack)) return false
+  return /\b(cached|instant)\b/i.test(haystack) || /\btorbox\b/i.test(haystack)
 }
 
 function isLowQualityCapture(stream: StreamResult) {
@@ -82,8 +113,9 @@ export function filterStreamsForProfile(
   profile: ResultProfile,
   preferCachedResults: boolean,
   customProfile?: CustomStreamProfile,
+  torboxApiKey = '',
 ) {
-  if (customProfile) return filterStreamsForCustomProfile(streams, customProfile)
+  if (customProfile) return sortStreamsByPlayability(filterStreamsForCustomProfile(streams, customProfile), torboxApiKey)
 
   const clean = streams.filter((stream) => !isLowQualityCapture(stream) && !isThreeDimensional(stream))
   const cached = clean.filter(isStreamCached)
@@ -97,33 +129,40 @@ export function filterStreamsForProfile(
       .forEach((stream) => {
         const quality = streamQuality(stream)
         const current = byQuality.get(quality)
-        if (!current || stream.rank > current.rank) byQuality.set(quality, stream)
+        if (!current || playabilityScore(stream, torboxApiKey) > playabilityScore(current, torboxApiKey)) {
+          byQuality.set(quality, stream)
+        }
       })
 
-    return Array.from(byQuality.values())
-      .sort((a, b) => streamQuality(b) - streamQuality(a) || b.rank - a.rank)
-      .slice(0, 4)
+    return sortStreamsByPlayability(
+      Array.from(byQuality.values()).sort((a, b) => streamQuality(b) - streamQuality(a)),
+      torboxApiKey,
+    )
   }
 
   if (profile === 'dataSaver') {
-    return dedupeStreams(base)
-      .filter((stream) => {
-        const quality = streamQuality(stream)
-        const size = streamSizeGb(stream)
-        return quality <= 1080 && (size <= 15 || !Number.isFinite(size))
-      })
-      .sort((a, b) => {
-        const qualityDelta = streamQuality(b) - streamQuality(a)
-        if (qualityDelta !== 0) return qualityDelta
-        return streamSizeGb(a) - streamSizeGb(b) || b.rank - a.rank
-      })
-      .slice(0, 6)
+    return sortStreamsByPlayability(
+      dedupeStreams(base)
+        .filter((stream) => {
+          const quality = streamQuality(stream)
+          const size = streamSizeGb(stream)
+          return quality <= 1080 && (size <= 5 || !Number.isFinite(size))
+        })
+        .sort((a, b) => {
+          const qualityDelta = streamQuality(b) - streamQuality(a)
+          if (qualityDelta !== 0) return qualityDelta
+          return streamSizeGb(a) - streamSizeGb(b)
+        }),
+      torboxApiKey,
+    )
   }
 
-  return dedupeStreams(base)
-    .filter((stream) => streamQuality(stream) >= 1080 || /hdr|remux|bluray|blu-ray|atmos/i.test(streamText(stream)))
-    .sort((a, b) => b.rank - a.rank || streamSizeGb(b) - streamSizeGb(a))
-    .slice(0, 8)
+  return sortStreamsByPlayability(
+    dedupeStreams(base)
+      .filter((stream) => streamQuality(stream) >= 1080 || /hdr|remux|bluray|blu-ray|atmos/i.test(streamText(stream)))
+      .sort((a, b) => streamSizeGb(b) - streamSizeGb(a)),
+    torboxApiKey,
+  )
 }
 
 export function filterStreamsForCustomProfile(streams: StreamResult[], profile: CustomStreamProfile) {
@@ -145,7 +184,7 @@ export function filterStreamsForCustomProfile(streams: StreamResult[], profile: 
     return true
   })
 
-  const ranked = dedupeStreams(base).sort((a, b) => b.rank - a.rank || streamSizeGb(b) - streamSizeGb(a))
+  const ranked = dedupeStreams(base).sort((a, b) => streamSizeGb(b) - streamSizeGb(a) || b.rank - a.rank)
 
   if (profile.onePerResolution) {
     const byQuality = new Map<number, StreamResult>()

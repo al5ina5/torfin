@@ -3,9 +3,9 @@ import type { AppPreferences, BuiltinResultProfile, CustomStreamProfile, ResultP
 export const builtinProfileIds: BuiltinResultProfile[] = ['netflix', 'dataSaver', 'cinephile']
 
 export const builtinProfileMeta: Record<BuiltinResultProfile, { label: string; description: string }> = {
-  netflix: { label: 'Reliable', description: 'One best pick per quality tier — instant-play ready.' },
-  dataSaver: { label: 'Fastest', description: 'Smaller files capped at 1080p for quicker downloads.' },
-  cinephile: { label: 'Best', description: 'Top quality: 4K, HDR, Remux, and Blu-ray.' },
+  netflix: { label: 'Reliable', description: 'One best pick per quality — cached and high-peer streams first.' },
+  dataSaver: { label: 'Fastest', description: 'Smaller files (≤5 GB), 1080p max — quickest to download or play.' },
+  cinephile: { label: 'Best', description: 'Top quality: 4K, HDR, Remux, and Blu-ray — playability ranked.' },
 }
 
 export function builtinProfileList() {

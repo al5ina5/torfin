@@ -391,7 +391,7 @@ function InspectorContent({
 
         {showStreamResults ? (
           <StreamResults
-            streams={streams}
+            profileStreams={streams}
             compactStreams={compactStreams}
             profileOptions={profileOptions}
             loading={loadingStreams}
