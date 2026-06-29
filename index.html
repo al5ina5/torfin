@@ -7,6 +7,18 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
+    <script>
+      (function () {
+        var standalone =
+          window.navigator.standalone === true ||
+          window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: fullscreen)').matches ||
+          window.matchMedia('(display-mode: minimal-ui)').matches
+        if (standalone) {
+          document.documentElement.style.setProperty('--app-viewport-height', '100vh')
+        }
+      })()
+    </script>
     <meta name="theme-color" content="#131315" />
     <meta name="description" content="Browse and stream your Torbox library." />
     <meta name="mobile-web-app-capable" content="yes" />

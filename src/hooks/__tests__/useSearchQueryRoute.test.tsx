@@ -13,6 +13,12 @@ vi.mock('../../lib/app-routes', async (importOriginal) => {
   }
 })
 
+/** Old App.tsx route→query sync — caused input to snap back to stale URL values. */
+function legacyRouteToQuerySync(query: string, debouncedQuery: string, routeSearchQuery: string) {
+  if (query === debouncedQuery && routeSearchQuery !== query) return routeSearchQuery
+  return query
+}
+
 function renderSearchHook(routeSearchQuery?: string) {
   const navigateSearch = vi.fn()
   const navigateBrowse = vi.fn()
@@ -52,6 +58,10 @@ describe('useSearchQueryRoute', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+  })
+
+  it('documents the stale-route race that the old sync logic introduced', () => {
+    expect(legacyRouteToQuerySync('hello world', 'hello world', 'hello')).toBe('hello')
   })
 
   it('debounces navigation to the URL without rewriting the input', () => {

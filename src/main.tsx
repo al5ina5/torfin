@@ -4,18 +4,12 @@ import { registerSW } from 'virtual:pwa-register'
 import { SWRConfig } from 'swr'
 import './index.css'
 import { initTheme } from './lib/theme'
+import { initViewportHeight } from './lib/viewport'
 import { AppToaster } from './components/AppToaster'
 import App from './App.tsx'
 
 initTheme()
-
-function syncViewportHeight() {
-  document.documentElement.style.setProperty('--app-viewport-height', `${window.innerHeight}px`)
-}
-
-syncViewportHeight()
-window.addEventListener('resize', syncViewportHeight, { passive: true })
-window.visualViewport?.addEventListener('resize', syncViewportHeight, { passive: true })
+initViewportHeight()
 
 registerSW({ immediate: true })
 

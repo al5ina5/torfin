@@ -2,6 +2,7 @@ import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
 import type { Movie, PlaybackProgress } from '../types'
+import { MovieEmptyState } from './MovieEmptyState'
 import { MoviePoster } from './MoviePoster'
 
 type MovieListProps = {
@@ -21,13 +22,7 @@ type MovieListProps = {
   loadMoreRef: React.RefObject<HTMLDivElement | null>
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
-}
-
-function emptyMessage(catalogId?: string) {
-  if (catalogId === 'watchlist') return 'Your watchlist is empty.'
-  if (catalogId === 'continue') return 'Nothing to continue yet.'
-  if (catalogId === 'recent') return 'Titles you open will appear here.'
-  return 'No movies match the current search and filters.'
+  onClearFilters?: () => void
 }
 
 function movieMetaLine(
@@ -93,6 +88,7 @@ export function MovieList({
   loadMoreRef,
   onSelectMovie,
   onToggleWatchlist,
+  onClearFilters,
 }: MovieListProps) {
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
@@ -101,7 +97,10 @@ export function MovieList({
   const showLoadMore = !shouldRemoteSearch && hasMoreMovies && !loading
 
   return (
-    <div ref={scrollRef} className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">
+    <div
+      ref={scrollRef}
+      className={`@container min-h-0 flex-1 overflow-y-auto px-3 py-3${showEmpty ? ' flex flex-col' : ''}`}
+    >
       {loading ? (
         <ListSkeleton />
       ) : movies.length ? (
@@ -174,9 +173,7 @@ export function MovieList({
           ) : null}
         </div>
       ) : showEmpty ? (
-        <div className="movie-empty-enter grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
-          {emptyMessage(catalogId)}
-        </div>
+        <MovieEmptyState catalogId={catalogId} onClearFilters={onClearFilters} />
       ) : null}
     </div>
   )

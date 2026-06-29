@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:web-downloads": "node scripts/test-web-downloads.mjs",
     "test:ui": "node scripts/ui-smoke-test.mjs",
+    "test:search-debounce": "node scripts/test-search-debounce.mjs",
     "thinktower": "node scripts/deploy-thinktower.mjs",
     "install:hooks": "bash scripts/install-git-hooks.sh"
   },

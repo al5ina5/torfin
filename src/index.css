@@ -93,7 +93,7 @@ html {
   background: var(--mac-window);
   color: var(--mac-text);
   height: var(--app-viewport-height);
-  height: -webkit-fill-available;
+  min-height: var(--app-viewport-height);
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -105,7 +105,7 @@ html {
 
 body {
   height: var(--app-viewport-height);
-  height: -webkit-fill-available;
+  min-height: var(--app-viewport-height);
   margin: 0;
   overflow: hidden;
   overscroll-behavior: none;
@@ -118,21 +118,13 @@ body {
     var(--app-safe-left);
 }
 
-@media (max-width: 1023px), (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
-  body {
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: auto;
-  }
-}
-
 body.modal-open {
   overflow: hidden;
 }
 
 #root {
   height: 100%;
+  min-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: manipulation;
@@ -185,7 +177,7 @@ body.modal-open {
   max-width: 100%;
   min-height: 0;
   display: flex;
-  max-height: min(82dvh, calc(100dvh - var(--app-safe-top, 0px) - 72px));
+  max-height: min(82vh, calc(var(--app-viewport-height) - var(--app-safe-top, 0px) - 72px));
   flex-direction: column;
   overflow: hidden;
   border-radius: 14px 14px 0 0;

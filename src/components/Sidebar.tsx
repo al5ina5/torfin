@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, Tv } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Settings2, SlidersHorizontal, Tv } from 'lucide-react'
 
+import { builtInFilterPresets, FEATURED_PRESET_COUNT, pickFeaturedPresets } from '../lib/filter-presets'
 import { topGenres } from '../lib/genres'
 import { catalogOptions, isLibraryCatalog, libraryCatalogOptions } from '../lib/movies'
-import type { ContentType } from '../types'
+import type { ContentType, FilterPreset, MovieFilters } from '../types'
 import { AppDrawer } from './AppDrawer'
 
 type DownloadSidebarSummary = {
@@ -25,6 +26,9 @@ type SidebarProps = {
   onCatalogChange: (id: string) => void
   onOpenPreferences: () => void
   onOpenDownloads: () => void
+  customFilterPresets: FilterPreset[]
+  movieFilters: MovieFilters
+  onApplyFilterPreset: (preset: FilterPreset) => void
   mobile?: boolean
   open?: boolean
   onClose?: () => void
@@ -45,12 +49,21 @@ function SidebarContent({
   onCatalogChange,
   onOpenPreferences,
   onOpenDownloads,
+  customFilterPresets,
+  movieFilters,
+  onApplyFilterPreset,
   mobile = false,
   onClose,
 }: SidebarProps) {
   const allOptions = [...libraryCatalogOptions, ...catalogOptions]
   const topGenreSet = new Set<string>(topGenres)
   const [genresExpanded, setGenresExpanded] = useState(false)
+  const [presetsExpanded, setPresetsExpanded] = useState(false)
+  const [featuredPresets] = useState(() => pickFeaturedPresets(builtInFilterPresets, FEATURED_PRESET_COUNT))
+  const allPresets = [...builtInFilterPresets, ...customFilterPresets]
+  const visiblePresets = presetsExpanded
+    ? [...allPresets].sort((left, right) => left.name.localeCompare(right.name))
+    : featuredPresets
 
   useEffect(() => {
     const selected = allOptions.find((option) => option.id === catalogId)
@@ -175,6 +188,44 @@ function SidebarContent({
             </div>
           </div>
         ))}
+
+        <div className="mb-4">
+          <div className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">
+            Presets
+          </div>
+          <div className="space-y-1">
+            {visiblePresets.map((preset) => {
+              const active = (Object.keys(movieFilters) as (keyof MovieFilters)[]).every(
+                (key) => movieFilters[key] === preset.filters[key],
+              )
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleNavigate(() => onApplyFilterPreset(preset))}
+                  className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] font-medium transition ${
+                    active
+                      ? 'bg-[var(--mac-accent-soft)] text-[var(--mac-accent-soft-text)]'
+                      : 'text-[var(--mac-text)] hover:bg-[var(--mac-control)]'
+                  }`}
+                >
+                  <SlidersHorizontal size={15} />
+                  <span className="truncate">{preset.name}</span>
+                </button>
+              )
+            })}
+            {allPresets.length > FEATURED_PRESET_COUNT ? (
+              <button
+                type="button"
+                onClick={() => setPresetsExpanded((expanded) => !expanded)}
+                className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] font-medium text-[var(--mac-secondary)] transition hover:bg-[var(--mac-control)] hover:text-[var(--mac-text)]"
+              >
+                {presetsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                <span>{presetsExpanded ? 'Show less' : 'Show more'}</span>
+              </button>
+            ) : null}
+          </div>
+        </div>
       </nav>
 
       <div className="shrink-0 border-t border-[var(--mac-divider,var(--mac-border))] p-2">

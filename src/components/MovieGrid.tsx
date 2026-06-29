@@ -2,6 +2,7 @@ import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
 import type { Movie } from '../types'
+import { MovieEmptyState } from './MovieEmptyState'
 import { MovieGridSkeleton } from './MovieGridSkeleton'
 import { MoviePoster } from './MoviePoster'
 
@@ -23,16 +24,7 @@ type MovieGridProps = {
   loadMoreRef: React.RefObject<HTMLDivElement | null>
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
-}
-
-function emptyMessage(catalogId?: string) {
-  if (catalogId === 'watchlist') {
-    return 'Your watchlist is empty. Use the heart icon on any title to save it here.'
-  }
-  if (catalogId === 'continue') {
-    return 'Nothing to continue yet. Start watching something and your progress will show up here.'
-  }
-  return 'No movies match the current search and filters.'
+  onClearFilters?: () => void
 }
 
 export function MovieGrid({
@@ -53,6 +45,7 @@ export function MovieGrid({
   loadMoreRef,
   onSelectMovie,
   onToggleWatchlist,
+  onClearFilters,
 }: MovieGridProps) {
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
@@ -61,7 +54,10 @@ export function MovieGrid({
   const showEmpty = !loading && !loadingMore && movies.length === 0
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <div
+      ref={scrollRef}
+      className={`min-h-0 flex-1 overflow-y-auto px-5 py-5${showEmpty ? ' flex flex-col' : ''}`}
+    >
       {loading ? (
         <MovieGridSkeleton posterSize={posterSize} />
       ) : movies.length ? (
@@ -153,9 +149,7 @@ export function MovieGrid({
           ) : null}
         </div>
       ) : showEmpty ? (
-        <div className="movie-empty-enter grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
-          {emptyMessage(catalogId)}
-        </div>
+        <MovieEmptyState catalogId={catalogId} onClearFilters={onClearFilters} />
       ) : null}
     </div>
   )

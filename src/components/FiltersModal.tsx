@@ -1,28 +1,24 @@
 import { SlidersHorizontal } from 'lucide-react'
 
 import { filterGenres, filterYears } from '../lib/movies'
-import type { FilterPreset, MovieFilters } from '../types'
+import type { MovieFilters } from '../types'
 import { AppModal } from './AppModal'
 
 type FiltersModalProps = {
   open: boolean
   filters: MovieFilters
-  presets: FilterPreset[]
   onClose: () => void
   onChange: (next: MovieFilters) => void
   onReset: () => void
-  onApplyPreset: (preset: FilterPreset) => void
   onSavePreset: (name: string) => void
 }
 
 export function FiltersModal({
   open,
   filters,
-  presets,
   onClose,
   onChange,
   onReset,
-  onApplyPreset,
   onSavePreset,
 }: FiltersModalProps) {
   return (
@@ -35,26 +31,13 @@ export function FiltersModal({
       bodyClassName="modal-scroll space-y-4 p-4"
     >
       <div>
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--mac-tertiary)]">Presets</div>
-        <div className="flex flex-wrap gap-2">
-          {presets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => onApplyPreset(preset)}
-              className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2.5 text-[11px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
-            >
-              {preset.name}
-            </button>
-          ))}
-        </div>
         <button
           type="button"
           onClick={() => {
             const name = window.prompt('Preset name', 'My filters')
             if (name?.trim()) onSavePreset(name.trim())
           }}
-          className="mt-2 h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2.5 text-[11px] font-semibold"
+          className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-surface)] px-2.5 text-[11px] font-semibold"
         >
           Save current filters
         </button>

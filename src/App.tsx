@@ -29,7 +29,7 @@ import { useSecrets } from './hooks/useSecrets'
 import { getApi, isTauriRuntime, loadJson, postApi, resolveStreamUrl, setApiRequestTimeoutSeconds } from './lib/api'
 import { catalogPageUrl, enrichMovieFromMeta, metaUrl, normalizeCatalogItem, normalizeSeriesEpisodes, similarMoviesFromMeta, searchUrl } from './lib/cinemeta'
 import { allProfileOptions, builtinProfileList, findCustomProfile } from './lib/custom-profiles'
-import { allFilterPresets, createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
+import { createFilterPreset, loadCustomFilterPresets, saveCustomFilterPresets } from './lib/filter-presets'
 import {
   destinationToLegacyConfig,
   getDefaultDestination,
@@ -266,7 +266,6 @@ export default function App() {
   const contentLabelPlural = contentType === 'series' ? 'Shows' : 'Movies'
   const contentLabelSingular = contentType === 'series' ? 'Show' : 'Movie'
   const activePlugins = useMemo(() => plugins.filter((plugin) => plugin.enabled && plugin.streamUrlTemplate.trim() && (!pluginNeedsTorboxKey(plugin) || torboxApiKey.trim())), [plugins, torboxApiKey])
-  const activePluginCount = plugins.filter((plugin) => plugin.enabled).length
   const shellStyle = {
     '--left-sidebar-width': `${layout.leftSidebarWidth}px`,
     '--right-sidebar-width': `${layout.rightSidebarWidth}px`,
@@ -284,7 +283,6 @@ export default function App() {
   const activeCustomProfile = useMemo(() => findCustomProfile(preferences, resultProfile), [preferences, resultProfile])
   const inspectorMovie = enrichedMovie ?? selectedMovie
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
-  const filterPresets = useMemo(() => allFilterPresets(), [customFilterPresets])
 
   const { data: catalogData, error: catalogError, isLoading: catalogLoading, isValidating: catalogValidating } = useSWR(
     isLibraryCatalog(catalogId) ? null : ['catalog', contentType, filteredCatalogUrl],
@@ -652,6 +650,8 @@ export default function App() {
     const filters = effectiveMovieFilters(catalogId, movieFilters)
     return filterAndSortMovies(shouldRemoteSearch ? (searchData || []) : local, filters)
   }, [catalogId, movies, movieFilters, query, searchData, shouldRemoteSearch])
+  const hasActiveSearchOrFilters =
+    Boolean(query.trim()) || Object.values(movieFilters).some((value) => value && value !== 'catalog')
   const compactStreams = useMemo(() => {
     const filtered = filterStreamsForProfile(streams, resultProfile, preferences.preferCachedResults, activeCustomProfile)
     const limit = preferences.compactResultsLimit
@@ -699,7 +699,6 @@ export default function App() {
 
   function handleApplyFilterPreset(preset: FilterPreset) {
     setMovieFilters({ ...preset.filters })
-    closeModal()
   }
 
   function handleSaveFilterPreset(name: string) {
@@ -707,6 +706,11 @@ export default function App() {
     const next = [...customFilterPresets, preset]
     setCustomFilterPresets(next)
     saveCustomFilterPresets(next)
+  }
+
+  function handleClearSearchAndFilters() {
+    setMovieFilters(defaultMovieFilters)
+    setQuery('')
   }
 
   function handleExportSettings() {
@@ -1433,6 +1437,9 @@ export default function App() {
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
+            customFilterPresets={customFilterPresets}
+            movieFilters={movieFilters}
+            onApplyFilterPreset={handleApplyFilterPreset}
           />
         ) : null}
 
@@ -1454,6 +1461,9 @@ export default function App() {
             onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
+            customFilterPresets={customFilterPresets}
+            movieFilters={movieFilters}
+            onApplyFilterPreset={handleApplyFilterPreset}
           />
         ) : null}
 
@@ -1568,6 +1578,7 @@ export default function App() {
               loadMoreRef={loadMoreRef}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
+              onClearFilters={hasActiveSearchOrFilters ? handleClearSearchAndFilters : undefined}
             />
           ) : (
             <MovieGrid
@@ -1588,6 +1599,7 @@ export default function App() {
               loadMoreRef={loadMoreRef}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
+              onClearFilters={hasActiveSearchOrFilters ? handleClearSearchAndFilters : undefined}
             />
           )}
         </section>
@@ -1663,11 +1675,9 @@ export default function App() {
         <FiltersModal
           open={filtersOpen}
           filters={movieFilters}
-          presets={filterPresets}
           onClose={closeModal}
           onChange={setMovieFilters}
           onReset={() => setMovieFilters(defaultMovieFilters)}
-          onApplyPreset={handleApplyFilterPreset}
           onSavePreset={handleSaveFilterPreset}
         />
         <DownloadsModal
