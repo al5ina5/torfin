@@ -1,13 +1,11 @@
-import { KeyRound, Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { defaultCustomProfile } from '../lib/custom-profiles'
 import { isMacTauri, listNativePlayers, type NativePlayerOption } from '../lib/native-player'
 import { catalogOptions, libraryCatalogOptions } from '../lib/movies'
 import {
-  DEBRID_SERVICE_HINT,
   THIRD_PARTY_ADDON_ENABLE_TITLE,
-  THIRD_PARTY_STREAM_SOURCES_HINT,
   thirdPartyAddonEnableMessage,
 } from '../lib/legal-notice'
 import { hasThirdPartyAddonAck, markThirdPartyAddonAck } from '../lib/third-party-addon-ack'
@@ -15,7 +13,6 @@ import type {
   AppPreferences,
   CustomStreamProfile,
   DownloadConfig,
-  JellyfinDuplicateAction,
   MacNativePlayer,
   NextEpisodeCountdownSeconds,
   PluginConfig,
@@ -26,6 +23,7 @@ import type {
 } from '../types'
 import { AppModal } from './AppModal'
 import { DownloadDestinationsSettings } from './DownloadDestinationsSettings'
+import { IntegrationsSettings } from './IntegrationsSettings'
 import {
   SettingsField,
   SettingsHint,
@@ -34,8 +32,6 @@ import {
   SettingsSelect,
   SettingsToggle,
 } from './SettingsSection'
-import { SecretInput } from './SecretInput'
-import { TorboxAccountPanel } from './TorboxAccountPanel'
 import { ConfirmationDialog } from './ConfirmationDialog'
 
 type PreferencesModalProps = {
@@ -75,12 +71,11 @@ const preferenceTabLabels: Record<PreferencesTab, string> = {
   general: 'General',
   playback: 'Playback',
   downloads: 'Downloads',
-  accounts: 'Accounts',
-  plugins: 'Addons',
+  integrations: 'Integrations',
   advanced: 'Advanced',
 }
 
-const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'accounts', 'plugins', 'advanced']
+const preferenceTabs: PreferencesTab[] = ['general', 'playback', 'downloads', 'integrations', 'advanced']
 
 const startupCatalogOptions: Array<{ id: StartupCatalogId; label: string }> = [
   { id: 'lastUsed', label: 'Last used' },
@@ -433,123 +428,35 @@ export function PreferencesModal({
               checked={preferences.alwaysConfirmDownloadDestination}
               onChange={(alwaysConfirmDownloadDestination) => onUpdatePreferences({ alwaysConfirmDownloadDestination })}
             />
-            <SettingsField
-              label="Jellyfin duplicate downloads"
-              hint="What to do when a title already exists in your Jellyfin library at equal or higher quality."
-            >
-              <SettingsSelect
-                value={preferences.jellyfinDuplicateAction}
-                onChange={(value) => onUpdatePreferences({ jellyfinDuplicateAction: value as JellyfinDuplicateAction })}
-              >
-                <option value="ask">Ask before downloading</option>
-                <option value="allow">Always allow</option>
-                <option value="block">Skip download</option>
-              </SettingsSelect>
-            </SettingsField>
-            <SettingsToggle
-              label="Show Jellyfin library badges"
-              hint="Display quality badges on posters when a title is already in your Jellyfin library."
-              checked={preferences.jellyfinShowLibraryBadges}
-              onChange={(jellyfinShowLibraryBadges) => onUpdatePreferences({ jellyfinShowLibraryBadges })}
-            />
-            <SettingsToggle
-              label="Skip owned episodes in season downloads"
-              hint="When downloading a full season, skip episodes that are already in Jellyfin."
-              checked={preferences.jellyfinSkipOwnedEpisodes}
-              onChange={(jellyfinSkipOwnedEpisodes) => onUpdatePreferences({ jellyfinSkipOwnedEpisodes })}
-            />
           </SettingsSection>
 
-          <SettingsSection title="Destinations & Jellyfin">
+          <SettingsSection title="Destinations">
             <DownloadDestinationsSettings
               downloadConfig={downloadConfig}
-              jellyfinApiKey={jellyfinApiKey}
               onUpdateDownloadConfig={onUpdateDownloadConfig}
-              onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
-              onChangeJellyfinApiKey={onChangeJellyfinApiKey}
-              onOpenJellyfinSignIn={onOpenJellyfinSignIn}
             />
-            {onImportJellyfinWatchlist ? (
-              <div className="pt-2">
-                <SettingsHint>Merge Jellyfin favorites into your local watchlist (by IMDb id).</SettingsHint>
-                <button
-                  type="button"
-                  onClick={onImportJellyfinWatchlist}
-                  className="mt-2 h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
-                >
-                  Import Jellyfin favorites
-                </button>
-              </div>
-            ) : null}
           </SettingsSection>
         </div>
       ) : null}
 
-      {tab === 'accounts' ? (
+      {tab === 'integrations' ? (
         <div className="space-y-0">
-          <SettingsSection title="Debrid service (third party)" first>
-            <SettingsHint>{DEBRID_SERVICE_HINT}</SettingsHint>
-            <TorboxAccountPanel apiKey={torboxApiKey} />
-            <label className="block">
-              <span className="mb-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[var(--mac-secondary)]">
-                <KeyRound size={13} />
-                Torbox API Key
-              </span>
-              <SecretInput value={torboxApiKey} onChange={onChangeTorboxApiKey} />
-            </label>
-          </SettingsSection>
-        </div>
-      ) : null}
-
-      {tab === 'plugins' ? (
-        <div className="space-y-0">
-          <SettingsSection title="Network" first>
-            <SettingsField
-              label="Addon request timeout"
-              hint="How long to wait for stream addon responses in the web app before showing an error."
-            >
-              <SettingsSelect
-                value={preferences.apiRequestTimeoutSeconds}
-                onChange={(value) =>
-                  onUpdatePreferences({ apiRequestTimeoutSeconds: Number(value) as AppPreferences['apiRequestTimeoutSeconds'] })
-                }
-              >
-                <option value={10}>10 seconds</option>
-                <option value={15}>15 seconds</option>
-                <option value={30}>30 seconds</option>
-              </SettingsSelect>
-            </SettingsField>
-          </SettingsSection>
-
-          <SettingsSection title="Stream addons (third party)">
-            <SettingsHint>{THIRD_PARTY_STREAM_SOURCES_HINT}</SettingsHint>
-            <div className="space-y-3">
-              {plugins.map((plugin) => (
-                <div key={plugin.id} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="flex items-center gap-2 text-[13px] font-semibold">
-                      <input
-                        checked={plugin.enabled}
-                        onChange={(event) => handlePluginEnabledChange(plugin, event.target.checked)}
-                        type="checkbox"
-                        className="size-4 accent-[var(--mac-accent)]"
-                      />
-                      {plugin.name}
-                    </label>
-                    {plugin.enabled ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-[var(--mac-accent)]">On</span>
-                    ) : null}
-                  </div>
-                  <textarea
-                    value={plugin.streamUrlTemplate}
-                    onChange={(event) => onUpdatePlugin(plugin.id, { streamUrlTemplate: event.target.value })}
-                    rows={2}
-                    spellCheck={false}
-                    className="w-full resize-none rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 py-1.5 font-mono text-[11px] leading-4 outline-none focus:border-[var(--mac-accent)]"
-                  />
-                </div>
-              ))}
-            </div>
+          <SettingsSection title="Connected Services" first>
+            <IntegrationsSettings
+              plugins={plugins}
+              torboxApiKey={torboxApiKey}
+              jellyfinApiKey={jellyfinApiKey}
+              downloadConfig={downloadConfig}
+              preferences={preferences}
+              onUpdatePlugin={onUpdatePlugin}
+              onChangeTorboxApiKey={onChangeTorboxApiKey}
+              onChangeJellyfinApiKey={onChangeJellyfinApiKey}
+              onPatchDownloadConfig={(patch) => onUpdateDownloadConfig({ ...downloadConfig, ...patch })}
+              onUpdatePreferences={onUpdatePreferences}
+              onOpenJellyfinSignIn={onOpenJellyfinSignIn}
+              onPluginEnabledChange={handlePluginEnabledChange}
+              onImportJellyfinWatchlist={onImportJellyfinWatchlist}
+            />
           </SettingsSection>
         </div>
       ) : null}
@@ -596,6 +503,24 @@ export function PreferencesModal({
                 ) : null}
               </div>
             </div>
+          </SettingsSection>
+
+          <SettingsSection title="Network">
+            <SettingsField
+              label="Addon request timeout"
+              hint="How long to wait for stream addon responses in the web app before showing an error."
+            >
+              <SettingsSelect
+                value={preferences.apiRequestTimeoutSeconds}
+                onChange={(value) =>
+                  onUpdatePreferences({ apiRequestTimeoutSeconds: Number(value) as AppPreferences['apiRequestTimeoutSeconds'] })
+                }
+              >
+                <option value={10}>10 seconds</option>
+                <option value={15}>15 seconds</option>
+                <option value={30}>30 seconds</option>
+              </SettingsSelect>
+            </SettingsField>
           </SettingsSection>
 
           <SettingsSection title="Layout">

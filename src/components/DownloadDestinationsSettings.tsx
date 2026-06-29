@@ -17,24 +17,15 @@ import { isTauriRuntime } from '../lib/api'
 import { toast } from '../lib/toast'
 import type { DownloadConfig, DownloadDestination } from '../types'
 import { DownloadDestinationWizard } from './DownloadDestinationWizard'
-import { JellyfinIntegrationSettings } from './JellyfinIntegrationSettings'
 
 type DownloadDestinationsSettingsProps = {
   downloadConfig: DownloadConfig
-  jellyfinApiKey: string
   onUpdateDownloadConfig: (config: DownloadConfig) => void
-  onPatchDownloadConfig: (patch: Partial<DownloadConfig>) => void
-  onChangeJellyfinApiKey: (value: string) => void
-  onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
 }
 
 export function DownloadDestinationsSettings({
   downloadConfig,
-  jellyfinApiKey,
   onUpdateDownloadConfig,
-  onPatchDownloadConfig,
-  onChangeJellyfinApiKey,
-  onOpenJellyfinSignIn,
 }: DownloadDestinationsSettingsProps) {
   const isDesktop = isTauriRuntime()
   const [wizardOpen, setWizardOpen] = useState(false)
@@ -230,14 +221,6 @@ export function DownloadDestinationsSettings({
           onSave={handleSave}
         />
       </div>
-
-      <JellyfinIntegrationSettings
-        downloadConfig={downloadConfig}
-        jellyfinApiKey={jellyfinApiKey}
-        onPatchDownloadConfig={onPatchDownloadConfig}
-        onChangeJellyfinApiKey={onChangeJellyfinApiKey}
-        onOpenJellyfinSignIn={onOpenJellyfinSignIn}
-      />
     </div>
   )
 }

@@ -120,22 +120,54 @@ function stringList(value: unknown) {
   return value.map((entry) => String(entry)).filter(Boolean)
 }
 
+export function youtubeTrailerUrl(videoId: string) {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId.trim())}`
+}
+
+export function trailerSearchUrl(name: string, releaseInfo?: string, type: ContentType = 'movie') {
+  const label = type === 'series' ? 'official trailer' : 'trailer'
+  const query = [name, releaseInfo, label].filter(Boolean).join(' ')
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
+}
+
+function extractTrailerFromMeta(meta: Record<string, unknown>): string | undefined {
+  const trailerStreams = Array.isArray(meta.trailerStreams) ? meta.trailerStreams : []
+  for (const stream of trailerStreams) {
+    const ytId = (stream as Record<string, unknown>).ytId
+    if (typeof ytId === 'string' && ytId.trim()) return youtubeTrailerUrl(ytId)
+  }
+
+  const trailers = Array.isArray(meta.trailers) ? meta.trailers : []
+  for (const trailer of trailers) {
+    const source = (trailer as Record<string, unknown>).source
+    if (typeof source === 'string' && source.trim()) return youtubeTrailerUrl(source)
+  }
+
+  const links = Array.isArray(meta.links) ? meta.links : []
+  const link = links
+    .map((entry) => entry as Record<string, unknown>)
+    .find((entry) => String(entry.category || '').toLowerCase() === 'trailer' && typeof entry.url === 'string')
+  if (link) return String(link.url)
+
+  return undefined
+}
+
 export function enrichMovieFromMeta(movie: Movie, payload: Record<string, unknown> | null | undefined): Movie {
   if (!payload) return movie
   const meta = (payload.meta ?? payload) as Record<string, unknown>
   const cast = stringList(meta.cast)
   const director = stringList(meta.director)
   const runtime = meta.runtime ? String(meta.runtime) : undefined
-  const links = Array.isArray(meta.links) ? meta.links : []
-  const trailer = links
-    .map((link) => link as Record<string, unknown>)
-    .find((link) => String(link.category || '').toLowerCase() === 'trailer' && typeof link.url === 'string')
+  const trailer =
+    extractTrailerFromMeta(meta) ??
+    movie.trailer ??
+    trailerSearchUrl(movie.name, movie.releaseInfo, movie.type)
   return {
     ...movie,
     cast: cast.length ? cast : movie.cast,
     director: director.length ? director : movie.director,
     runtime: runtime || movie.runtime,
-    trailer: trailer ? String(trailer.url) : movie.trailer,
+    trailer,
     background: movie.background || (typeof meta.background === 'string' ? meta.background : undefined),
     description: movie.description || (typeof meta.description === 'string' ? meta.description : undefined),
   }

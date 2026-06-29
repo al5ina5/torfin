@@ -33,15 +33,20 @@ describe('parseAppRoute', () => {
       catalogId: 'trending',
       modal: { kind: 'settings', tab: 'general' },
     })
+    expect(parseAppRoute('/settings/integrations')).toEqual({
+      contentType: 'movie',
+      catalogId: 'trending',
+      modal: { kind: 'settings', tab: 'integrations' },
+    })
     expect(parseAppRoute('/settings/plugins')).toEqual({
       contentType: 'movie',
       catalogId: 'trending',
-      modal: { kind: 'settings', tab: 'plugins' },
+      modal: { kind: 'settings', tab: 'integrations' },
     })
     expect(parseAppRoute('/settings/accounts')).toEqual({
       contentType: 'movie',
       catalogId: 'trending',
-      modal: { kind: 'settings', tab: 'accounts' },
+      modal: { kind: 'settings', tab: 'integrations' },
     })
     expect(parseAppRoute('/settings', '?tab=playback')).toEqual({
       contentType: 'movie',
@@ -51,7 +56,7 @@ describe('parseAppRoute', () => {
     expect(parseAppRoute('/', '?settings=plugins')).toEqual({
       contentType: 'movie',
       catalogId: 'trending',
-      modal: { kind: 'settings', tab: 'plugins' },
+      modal: { kind: 'settings', tab: 'integrations' },
     })
   })
 
@@ -134,8 +139,7 @@ describe('appRouteToUrl', () => {
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'downloads' as const } },
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'filters' as const } },
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'general' as const } },
-      { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'plugins' as const } },
-      { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'accounts' as const } },
+      { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'settings' as const, tab: 'integrations' as const } },
       { contentType: 'movie' as const, catalogId: 'trending', modal: { kind: 'legal' as const } },
     ]
     for (const route of routes) {

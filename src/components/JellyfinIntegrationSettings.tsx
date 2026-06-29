@@ -3,22 +3,29 @@ import { useState } from 'react'
 
 import { testJellyfinConnection } from '../lib/download-destinations'
 import { toast } from '../lib/toast'
-import type { DownloadConfig } from '../types'
+import type { AppPreferences, DownloadConfig, JellyfinDuplicateAction } from '../types'
+import { SettingsField, SettingsHint, SettingsSelect, SettingsToggle } from './SettingsSection'
 
 type JellyfinIntegrationSettingsProps = {
   downloadConfig: DownloadConfig
   jellyfinApiKey: string
+  preferences: AppPreferences
   onPatchDownloadConfig: (patch: Partial<DownloadConfig>) => void
   onChangeJellyfinApiKey: (value: string) => void
+  onUpdatePreferences: (patch: Partial<AppPreferences>) => void
   onOpenJellyfinSignIn: (baseUrl: string, onToken: (token: string) => void) => void
+  onImportJellyfinWatchlist?: () => void
 }
 
 export function JellyfinIntegrationSettings({
   downloadConfig,
   jellyfinApiKey,
+  preferences,
   onPatchDownloadConfig,
   onChangeJellyfinApiKey,
+  onUpdatePreferences,
   onOpenJellyfinSignIn,
+  onImportJellyfinWatchlist,
 }: JellyfinIntegrationSettingsProps) {
   const [testing, setTesting] = useState(false)
 
@@ -107,6 +114,46 @@ export function JellyfinIntegrationSettings({
           className="size-4 accent-[var(--mac-accent)] disabled:opacity-40"
         />
       </label>
+
+      <div className="mt-3 space-y-2 border-t border-[var(--mac-border)] pt-3">
+        <SettingsField
+          label="Duplicate downloads"
+          hint="What to do when a title already exists in your Jellyfin library at equal or higher quality."
+        >
+          <SettingsSelect
+            value={preferences.jellyfinDuplicateAction}
+            onChange={(value) => onUpdatePreferences({ jellyfinDuplicateAction: value as JellyfinDuplicateAction })}
+          >
+            <option value="ask">Ask before downloading</option>
+            <option value="allow">Always allow</option>
+            <option value="block">Skip download</option>
+          </SettingsSelect>
+        </SettingsField>
+        <SettingsToggle
+          label="Show library badges"
+          hint="Display quality badges on posters when a title is already in your Jellyfin library."
+          checked={preferences.jellyfinShowLibraryBadges}
+          onChange={(jellyfinShowLibraryBadges) => onUpdatePreferences({ jellyfinShowLibraryBadges })}
+        />
+        <SettingsToggle
+          label="Skip owned episodes in season downloads"
+          hint="When downloading a full season, skip episodes that are already in Jellyfin."
+          checked={preferences.jellyfinSkipOwnedEpisodes}
+          onChange={(jellyfinSkipOwnedEpisodes) => onUpdatePreferences({ jellyfinSkipOwnedEpisodes })}
+        />
+        {onImportJellyfinWatchlist ? (
+          <div className="pt-1">
+            <SettingsHint>Merge Jellyfin favorites into your local watchlist (by IMDb id).</SettingsHint>
+            <button
+              type="button"
+              onClick={onImportJellyfinWatchlist}
+              className="mt-2 h-8 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-3 text-[12px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+            >
+              Import Jellyfin favorites
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }

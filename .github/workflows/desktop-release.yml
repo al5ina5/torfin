@@ -66,7 +66,7 @@ jobs:
             ### Downloads
             - **macOS** (Apple Silicon): `*_aarch64.dmg`
             - **Linux**: `*_amd64.AppImage` or `*_amd64.deb`
-            - **Windows**: `*_x64-setup.exe` or `*.msi`
+            - **Windows**: `*_x64-setup.exe` (NSIS installer)
 
             See [setup docs](https://github.com/${{ github.repository }}/blob/main/docs/setup.md#desktop) for first-run configuration.
           releaseDraft: false

@@ -1,5 +1,15 @@
 export const LEGAL_NOTICE_SHORT =
-  'Torfin is client software only. It does not host content. You connect your own Torbox account and optional third-party addons, and you are responsible for complying with applicable law and each service’s terms.'
+  'Torfin is client software only. It does not host content. You connect your own accounts and optional third-party addons in Settings, and you are responsible for complying with applicable law and each service’s terms.'
+
+export const FIRST_RUN_INTRO =
+  'Torfin helps you browse catalogs and organize downloads into your own Jellyfin library. Connect accounts and addons in Settings when you are ready.'
+
+export const FIRST_RUN_DISCLAIMER_BULLETS = [
+  'Torfin does not host, store, index, or distribute movies, TV shows, or other media.',
+  'All stream sources and accounts are third-party services you choose and configure yourself.',
+  'You must have the right to access anything you download or import, under the laws that apply to you.',
+  'Copyright infringement is your responsibility, regardless of which software you use.',
+] as const
 
 export const LEGAL_NOTICE_ACK_LABEL =
   'I understand Torfin does not provide or host media. I am responsible for how I use it and for the third-party services I connect.'

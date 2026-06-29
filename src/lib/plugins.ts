@@ -35,6 +35,10 @@ export function pluginNeedsTorboxKey(plugin: PluginConfig) {
   return plugin.streamUrlTemplate.includes('{torboxApiKey}') || plugin.streamUrlTemplate.includes('{cometTorboxConfig}')
 }
 
+export function hasEnabledStreamSources(plugins: PluginConfig[]) {
+  return plugins.some((plugin) => plugin.enabled && plugin.streamUrlTemplate.trim())
+}
+
 type SeriesSelection = { season: number; episode: number }
 
 export function hydrateUrl(

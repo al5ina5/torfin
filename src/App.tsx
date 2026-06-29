@@ -67,7 +67,7 @@ import {
 } from './lib/downloads'
 import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
 import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery, setRecentViewsLimit } from './lib/history'
-import { hydrateUrl, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
+import { hydrateUrl, hasEnabledStreamSources, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
 import { buildSettingsExport, downloadSettingsFile, parseSettingsExport } from './lib/settings-export'
 import { applyThemeMode, saveThemeMode } from './lib/theme'
 import { toast } from './lib/toast'
@@ -285,6 +285,7 @@ export default function App() {
   const contentLabelPlural = contentType === 'series' ? 'Shows' : 'Movies'
   const contentLabelSingular = contentType === 'series' ? 'Show' : 'Movie'
   const activePlugins = useMemo(() => plugins.filter((plugin) => plugin.enabled && plugin.streamUrlTemplate.trim() && (!pluginNeedsTorboxKey(plugin) || torboxApiKey.trim())), [plugins, torboxApiKey])
+  const showStreamResults = useMemo(() => hasEnabledStreamSources(plugins), [plugins])
   const shellStyle = {
     '--left-sidebar-width': `${layout.leftSidebarWidth}px`,
     '--right-sidebar-width': `${layout.rightSidebarWidth}px`,
@@ -318,7 +319,7 @@ export default function App() {
     return { season: selectedSeason, episode: selectedEpisode }
   }, [selectedEpisode, selectedMovie?.type, selectedSeason])
   const { data: streamData, error: streamError, isLoading: streamsLoading, mutate: refreshStreams } = useSWR(
-    selectedMovie && (selectedMovie.type === 'movie' || episodeSelection)
+    selectedMovie && showStreamResults && (selectedMovie.type === 'movie' || episodeSelection)
       ? ['streams', selectedMovie.id, contentType, episodeSelection?.season, episodeSelection?.episode, torboxApiKey.trim(), activePlugins.map((plugin) => `${plugin.id}:${plugin.streamUrlTemplate}`).join('|')]
       : null,
     async () => {
@@ -377,9 +378,9 @@ export default function App() {
 
   useEffect(() => {
     if (!secretsLoaded) return
-    const dismissed = loadStoredString('torfin:first-run-dismissed', '')
-    setFirstRunOpen(!dismissed && !torboxApiKey.trim())
-  }, [secretsLoaded, torboxApiKey])
+    const accepted = loadStoredString(STORAGE_KEYS.legalNoticeAccepted, '') === '1'
+    setFirstRunOpen(!accepted)
+  }, [secretsLoaded])
 
   useEffect(() => {
     switch (route.modal?.kind) {
@@ -758,9 +759,7 @@ export default function App() {
         : `Could not load ${contentLabelPlural.toLowerCase()}`
       : '') || (movies.length === 0 ? movieError : '')
   const searchErrorMessage = searchError instanceof Error ? searchError.message : searchError ? 'Search failed' : ''
-  const streamEmptyMessage = activePlugins.length === 0
-    ? 'No stream sources are enabled. Open Settings and enable at least one source.'
-    : selectedMovie?.type === 'series' && !episodeSelection
+  const streamEmptyMessage = selectedMovie?.type === 'series' && !episodeSelection
       ? 'Choose a season and episode to load streams for this show.'
     : streamErrors.length
       ? `The enabled source did not return usable results. Refresh or try another ${contentLabelSingular.toLowerCase()}.`
@@ -1433,8 +1432,9 @@ export default function App() {
   }
 
   function dismissFirstRun() {
+    if (!firstRunLegalAccepted) return
+    saveStoredString(STORAGE_KEYS.legalNoticeAccepted, '1')
     saveStoredString('torfin:first-run-dismissed', '1')
-    if (firstRunLegalAccepted) saveStoredString(STORAGE_KEYS.legalNoticeAccepted, '1')
     setFirstRunOpen(false)
   }
 
@@ -1581,7 +1581,7 @@ export default function App() {
         return
       }
       if (firstRunOpen) {
-        setFirstRunOpen(false)
+        if (firstRunLegalAccepted) dismissFirstRun()
         return
       }
       if (destinationPickerOpen) {
@@ -1927,6 +1927,7 @@ export default function App() {
           compactStreams={compactStreams}
           profileOptions={profileOptions}
           loadingStreams={streamsLoading}
+          showStreamResults={showStreamResults}
           streamEmptyMessage={streamEmptyMessage}
           resultProfile={resultProfile}
           resultsExpanded={resultsExpanded}
@@ -2072,14 +2073,9 @@ export default function App() {
         <LegalNoticeModal open={legalOpen} onClose={closeModal} />
         <FirstRunSetup
           open={firstRunOpen}
-          torboxApiKey={torboxApiKey}
           legalAccepted={firstRunLegalAccepted}
-          onChangeTorboxApiKey={setTorboxApiKey}
           onChangeLegalAccepted={setFirstRunLegalAccepted}
-          onOpenSettings={() => {
-            dismissFirstRun()
-            openSettings('accounts')
-          }}
+          onOpenLegal={openLegal}
           onDismiss={dismissFirstRun}
         />
       <ConfirmationDialog
@@ -2091,7 +2087,7 @@ export default function App() {
         onCancel={() => setTorboxKeyPromptOpen(false)}
         onConfirm={() => {
           setTorboxKeyPromptOpen(false)
-          openSettings('accounts')
+          openSettings('integrations')
         }}
       />
       <ConfirmationDialog

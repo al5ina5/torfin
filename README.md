@@ -40,9 +40,9 @@ Download the build for your platform from [Releases](https://github.com/al5ina5/
 |----------|----------------|
 | [macOS](https://github.com/al5ina5/torfin/releases/latest) (Apple Silicon) | `*_aarch64.dmg` |
 | [Linux](https://github.com/al5ina5/torfin/releases/latest) | `*_amd64.AppImage` or `*_amd64.deb` |
-| [Windows](https://github.com/al5ina5/torfin/releases/latest) | `*_x64-setup.exe` or `*.msi` |
+| [Windows](https://github.com/al5ina5/torfin/releases/latest) | `*_x64-setup.exe` (NSIS installer) |
 
-Open the app, paste your Torbox key on first launch, then open **Settings** to wire up plugins and Jellyfin.
+Open the app, accept the legal notice, then open **Settings** to connect your accounts, addons, and Jellyfin.
 
 New tags (`v*`) automatically build all three platforms and attach them to the GitHub release.
 

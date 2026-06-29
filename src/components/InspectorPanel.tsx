@@ -36,6 +36,7 @@ type InspectorPanelProps = {
   compactStreams: StreamResult[]
   profileOptions: Array<{ id: ResultProfile; label: string; description?: string }>
   loadingStreams: boolean
+  showStreamResults?: boolean
   streamEmptyMessage: string
   resultProfile: ResultProfile
   resultsExpanded: boolean
@@ -98,6 +99,7 @@ function InspectorContent({
   compactStreams,
   profileOptions,
   loadingStreams,
+  showStreamResults = true,
   streamEmptyMessage,
   resultProfile,
   resultsExpanded,
@@ -402,6 +404,7 @@ function InspectorContent({
           </section>
         ) : null}
 
+        {showStreamResults ? (
         <StreamResults
           streams={streams}
           compactStreams={compactStreams}
@@ -418,6 +421,7 @@ function InspectorContent({
           onPlay={onPlay}
           onDownload={onDownload}
         />
+        ) : null}
       </div>
     </section>
   )

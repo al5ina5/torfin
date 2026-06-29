@@ -26,16 +26,27 @@ export type AppRoute = {
 /** @deprecated Use AppRoute instead */
 export type AppModalRoute = AppRoute
 
-const SETTINGS_TABS: PreferencesTab[] = ['general', 'playback', 'downloads', 'accounts', 'plugins', 'advanced']
+const SETTINGS_TABS: PreferencesTab[] = ['general', 'playback', 'downloads', 'integrations', 'advanced']
+
+const LEGACY_SETTINGS_TABS: Record<string, PreferencesTab> = {
+  accounts: 'integrations',
+  plugins: 'integrations',
+}
+
+function normalizeSettingsTab(value: string | null | undefined): PreferencesTab | null {
+  if (!value) return null
+  if (SETTINGS_TABS.includes(value as PreferencesTab)) return value as PreferencesTab
+  return LEGACY_SETTINGS_TABS[value] ?? null
+}
+
+function isPreferencesTab(value: string | null | undefined): value is PreferencesTab {
+  return Boolean(normalizeSettingsTab(value))
+}
 
 const CATALOG_IDS = new Set<string>([
   ...libraryCatalogOptions.map((option) => option.id),
   ...catalogOptions.map((option) => option.id),
 ])
-
-function isPreferencesTab(value: string | null | undefined): value is PreferencesTab {
-  return Boolean(value && SETTINGS_TABS.includes(value as PreferencesTab))
-}
 
 function isImdbId(value: string) {
   return /^tt\d+$/.test(value)
@@ -57,11 +68,9 @@ function parseModalRoute(normalized: string, params: URLSearchParams, fallback: 
   if (normalized === '/settings' || normalized.startsWith('/settings/')) {
     const segment = normalized.split('/')[2]
     const tabParam = params.get('tab')
-    const tab = isPreferencesTab(segment)
-      ? segment
-      : isPreferencesTab(tabParam)
-        ? tabParam
-        : 'general'
+    const tab = normalizeSettingsTab(segment)
+      ?? normalizeSettingsTab(tabParam)
+      ?? 'general'
     return { ...fallback, modal: { kind: 'settings', tab } }
   }
 
@@ -70,9 +79,7 @@ function parseModalRoute(normalized: string, params: URLSearchParams, fallback: 
     const tab =
       settingsParam === '' || settingsParam === 'true' || settingsParam === '1'
         ? 'general'
-        : isPreferencesTab(settingsParam)
-          ? settingsParam
-          : 'general'
+        : normalizeSettingsTab(settingsParam) ?? 'general'
     return { ...fallback, modal: { kind: 'settings', tab } }
   }
 

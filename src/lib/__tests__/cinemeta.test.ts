@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { catalogPageUrl, catalogSupportsPagination, isCatalogEndError, normalizeMovie, normalizeSeriesEpisodes } from '../cinemeta'
+import {
+  catalogPageUrl,
+  catalogSupportsPagination,
+  enrichMovieFromMeta,
+  isCatalogEndError,
+  normalizeMovie,
+  normalizeSeriesEpisodes,
+  trailerSearchUrl,
+  youtubeTrailerUrl,
+} from '../cinemeta'
 
 describe('catalogPageUrl', () => {
   it('keeps base url when skip is zero or negative', () => {
@@ -57,6 +66,41 @@ describe('normalizeSeriesEpisodes', () => {
     ])
   })
 })
+describe('enrichMovieFromMeta', () => {
+  const baseMovie = {
+    id: 'tt1375666',
+    type: 'movie' as const,
+    name: 'Inception',
+    releaseInfo: '2010',
+  }
+
+  it('reads trailerStreams ytId from cinemeta meta', () => {
+    const enriched = enrichMovieFromMeta(baseMovie, {
+      meta: {
+        trailerStreams: [{ title: 'Inception', ytId: 'cdx31ak4KbQ' }],
+      },
+    })
+
+    expect(enriched.trailer).toBe(youtubeTrailerUrl('cdx31ak4KbQ'))
+  })
+
+  it('falls back to trailers source when trailerStreams is missing', () => {
+    const enriched = enrichMovieFromMeta(baseMovie, {
+      meta: {
+        trailers: [{ source: 'JE9z-gy4De4', type: 'Trailer' }],
+      },
+    })
+
+    expect(enriched.trailer).toBe(youtubeTrailerUrl('JE9z-gy4De4'))
+  })
+
+  it('uses youtube search when cinemeta has no trailer data', () => {
+    const enriched = enrichMovieFromMeta(baseMovie, { meta: { cast: ['Leonardo DiCaprio'] } })
+
+    expect(enriched.trailer).toBe(trailerSearchUrl('Inception', '2010', 'movie'))
+  })
+})
+
 describe('normalizeMovie', () => {
   it('returns null for non-imdb ids', () => {
     expect(

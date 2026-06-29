@@ -86,7 +86,7 @@ Download the build for your platform from [Releases](https://github.com/al5ina5/
 |----------|----------------|
 | macOS (Apple Silicon) | `*_aarch64.dmg` — open the `.dmg` and drag Torfin to Applications |
 | Linux | `*_amd64.AppImage` (portable) or `*_amd64.deb` (Debian/Ubuntu) |
-| Windows | `*_x64-setup.exe` or `*.msi` installer |
+| Windows | `*_x64-setup.exe` (NSIS installer) |
 
 Pushing a `v*` tag triggers CI to build all three and publish them on the same GitHub release.
 
