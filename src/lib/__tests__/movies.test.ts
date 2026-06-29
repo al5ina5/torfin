@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CINEMETA_CATALOG_URLS, CINEMETA_SERIES_CATALOG_URLS, CURRENT_RELEASE_YEAR } from '../cinemeta'
 import { builtInFilterPresets } from '../filter-presets'
-import { catalogOptions, catalogUrlWithFilters, effectiveMovieFilters, filterAndSortMovies } from '../movies'
+import { catalogOptions, catalogUrlWithFilters, defaultMovieFilters, effectiveMovieFilters, filterAndSortMovies } from '../movies'
 import type { Movie } from '../../types'
 
 describe('catalog URLs', () => {
@@ -33,9 +33,18 @@ describe('catalog URLs', () => {
 describe('catalogUrlWithFilters', () => {
   const trending = CINEMETA_CATALOG_URLS.trending
 
-  it('routes genre presets to the Cinemeta top genre catalog', () => {
+  it('routes genre presets to a paginatable catalog with client-side filtering', () => {
     const horror = builtInFilterPresets.find((preset) => preset.id === 'builtin-top-horror')!
-    expect(catalogUrlWithFilters(trending, horror.filters, 'movie')).toContain('/catalog/movie/top/genre=Horror.json')
+    expect(catalogUrlWithFilters(trending, horror.filters, 'movie', 'trending')).toBe(
+      'https://v3-cinemeta.strem.io/catalog/movie/top.json#genre:Horror&minRating:7&sort:ratingDesc',
+    )
+  })
+
+  it('routes sidebar genre catalogs to a paginatable catalog', () => {
+    const horrorUrl = CINEMETA_CATALOG_URLS.horror as string
+    expect(catalogUrlWithFilters(horrorUrl, defaultMovieFilters, 'movie', 'horror')).toBe(
+      'https://v3-cinemeta.strem.io/catalog/movie/top.json#catalog:horror&genre:Horror',
+    )
   })
 
   it('routes decade presets to a representative year catalog', () => {
@@ -70,6 +79,11 @@ describe('effectiveMovieFilters', () => {
       }).minRating,
     ).toBe('8')
     expect(effectiveMovieFilters('trending', { apiCatalog: '', genre: '', releaseYear: '', yearFrom: '', yearTo: '', minRating: '', sortBy: 'catalog' }).minRating).toBe('')
+  })
+
+  it('applies genre from sidebar genre catalogs', () => {
+    expect(effectiveMovieFilters('horror', defaultMovieFilters).genre).toBe('Horror')
+    expect(effectiveMovieFilters('sciFi', defaultMovieFilters).genre).toBe('Sci-Fi')
   })
 
   it('filters featured results differently from trending', () => {

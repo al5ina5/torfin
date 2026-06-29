@@ -13,6 +13,9 @@ describe('catalogPageUrl', () => {
     expect(catalogPageUrl('https://v3-cinemeta.strem.io/catalog/movie/top.json', 50)).toBe(
       'https://v3-cinemeta.strem.io/catalog/movie/top/skip=50.json',
     )
+    expect(catalogPageUrl('https://v3-cinemeta.strem.io/catalog/movie/top.json#genre:Horror', 50)).toBe(
+      'https://v3-cinemeta.strem.io/catalog/movie/top/skip=50.json',
+    )
   })
 })
 

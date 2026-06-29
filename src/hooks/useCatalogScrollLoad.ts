@@ -52,11 +52,10 @@ export function useCatalogScrollLoad({
   }, [enabled, itemCount, layoutKey, loadMoreRef, scrollRef])
 
   useEffect(() => {
-    if (!enabled || itemCount === 0) return
+    if (!enabled) return
     const root = scrollRef.current
     if (!root) return
-    if (root.scrollHeight <= root.clientHeight + 16) {
-      void loadNextPageRef.current()
-    }
+    if (itemCount > 0 && root.scrollHeight > root.clientHeight + 16) return
+    void loadNextPageRef.current()
   }, [enabled, itemCount, layoutKey, scrollRef])
 }

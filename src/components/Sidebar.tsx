@@ -82,7 +82,7 @@ function SidebarContent({
   const allOptions = [...libraryCatalogOptions, ...catalogOptions]
   const topGenreSet = new Set<string>(topGenres)
   const [genresExpanded, setGenresExpanded] = useState(false)
-  const [presetsExpanded, setPresetsExpanded] = useState(false)
+  const [presetsExpanded, setPresetsExpanded] = useState(true)
   const [featuredPresets] = useState(() => pickFeaturedPresets(builtInFilterPresets, FEATURED_PRESET_COUNT))
   const allPresets = [...builtInFilterPresets, ...customFilterPresets]
   const visiblePresets = presetsExpanded

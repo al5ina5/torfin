@@ -270,7 +270,7 @@ export default function App() {
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
   const baseCatalogUrl = isLibraryCatalog(catalogId) ? '' : catalogUrlMap(contentType)[selectedCatalog.id as keyof ReturnType<typeof catalogUrlMap>]
   const filteredCatalogUrl = baseCatalogUrl
-    ? catalogUrlWithFilters(baseCatalogUrl || catalogUrlMap(contentType).trending, movieFilters, contentType)
+    ? catalogUrlWithFilters(baseCatalogUrl || catalogUrlMap(contentType).trending, movieFilters, contentType, catalogId)
     : ''
   const contentLabelPlural = contentType === 'series' ? 'Shows' : 'Movies'
   const contentLabelSingular = contentType === 'series' ? 'Show' : 'Movie'

@@ -32,10 +32,20 @@ const catalogPresetFilters: Partial<Record<CatalogOptionId, Partial<MovieFilters
   featured: { minRating: '7' },
 }
 
+export function isGenreCatalogId(catalogId: string) {
+  return genreCatalogOptions.some((option) => option.id === catalogId)
+}
+
+export function genreLabelFromCatalogId(catalogId: string) {
+  return genreCatalogOptions.find((option) => option.id === catalogId)?.label ?? ''
+}
+
 export function effectiveMovieFilters(catalogId: string, filters: MovieFilters): MovieFilters {
   const preset = catalogPresetFilters[catalogId as CatalogOptionId] ?? {}
+  const catalogGenre = isGenreCatalogId(catalogId) ? genreLabelFromCatalogId(catalogId) : ''
   return {
     ...filters,
+    genre: filters.genre || catalogGenre,
     minRating: filters.minRating || preset.minRating || '',
   }
 }
@@ -66,6 +76,29 @@ function yearCatalogUrl(catalogRoot: 'movie' | 'series', year: number) {
   return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/year/genre=${encodeURIComponent(String(year))}.json`
 }
 
+function paginatableCatalogUrl(contentType: ContentType, baseUrl: string) {
+  const catalogRoot = contentType === 'series' ? 'series' : 'movie'
+  const kind = baseUrl.includes('imdbRating') ? 'imdbRating' : 'top'
+  return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${kind}.json`
+}
+
+function isGenreCatalogUrl(url: string) {
+  return /\/genre=/.test(url.replace(/^https?:\/\/[^/]+/, ''))
+}
+
+function catalogViewKey(apiUrl: string, catalogId: string, filters: MovieFilters, baseUrl: string) {
+  const parts: string[] = []
+  if (isGenreCatalogId(catalogId)) parts.push(`catalog:${catalogId}`)
+  if (filters.genre) parts.push(`genre:${filters.genre}`)
+  if (filters.yearFrom) parts.push(`yearFrom:${filters.yearFrom}`)
+  if (filters.yearTo) parts.push(`yearTo:${filters.yearTo}`)
+  if (filters.minRating) parts.push(`minRating:${filters.minRating}`)
+  if (filters.sortBy && filters.sortBy !== 'catalog') parts.push(`sort:${filters.sortBy}`)
+  if (parts.length === 0) return apiUrl
+  if (parts.length === 1 && parts[0] === `catalog:${catalogId}` && apiUrl === baseUrl) return apiUrl
+  return `${apiUrl}#${parts.join('&')}`
+}
+
 function representativeYearForRange(filters: MovieFilters) {
   const from = filters.yearFrom ? Number(filters.yearFrom) : Number.NaN
   const to = filters.yearTo ? Number(filters.yearTo) : Number.NaN
@@ -81,21 +114,36 @@ function representativeYearForRange(filters: MovieFilters) {
   return CURRENT_RELEASE_YEAR
 }
 
-export function catalogUrlWithFilters(baseUrl: string, filters: MovieFilters, contentType: ContentType) {
+export function catalogUrlWithFilters(
+  baseUrl: string,
+  filters: MovieFilters,
+  contentType: ContentType,
+  catalogId = '',
+) {
+  const effective = effectiveMovieFilters(catalogId, filters)
   const catalogRoot = contentType === 'series' ? 'series' : 'movie'
-  if (filters.apiCatalog === 'year' || filters.releaseYear) {
-    const year = filters.releaseYear || String(CURRENT_RELEASE_YEAR)
+
+  if (effective.apiCatalog === 'year' || effective.releaseYear) {
+    const year = effective.releaseYear || String(CURRENT_RELEASE_YEAR)
     return yearCatalogUrl(catalogRoot, Number(year))
   }
 
-  const apiCatalog = filters.apiCatalog || (filters.genre ? 'top' : '')
-  if (apiCatalog) {
-    const genrePath = filters.genre ? `/genre=${encodeURIComponent(filters.genre)}` : ''
-    return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${apiCatalog}${genrePath}.json`
+  if (effective.genre) {
+    const apiUrl = paginatableCatalogUrl(contentType, baseUrl)
+    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
   }
 
-  if (filters.yearFrom || filters.yearTo) {
-    return yearCatalogUrl(catalogRoot, representativeYearForRange(filters))
+  if (effective.apiCatalog) {
+    return `https://v3-cinemeta.strem.io/catalog/${catalogRoot}/${effective.apiCatalog}.json`
+  }
+
+  if (effective.yearFrom || effective.yearTo) {
+    return yearCatalogUrl(catalogRoot, representativeYearForRange(effective))
+  }
+
+  if (isGenreCatalogUrl(baseUrl) || isGenreCatalogId(catalogId)) {
+    const apiUrl = paginatableCatalogUrl(contentType, baseUrl)
+    return catalogViewKey(apiUrl, catalogId, effective, baseUrl)
   }
 
   return baseUrl
