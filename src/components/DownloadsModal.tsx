@@ -1,0 +1,236 @@
+import { HardDriveDownload, Loader2, Pause, Play } from 'lucide-react'
+
+import { bytesLabel, etaLabel, isActiveDownloadJob, sortDownloadJobs } from '../lib/downloads'
+import type { DownloadJob, DownloadSort } from '../types'
+import { AppModal } from './AppModal'
+
+type DownloadsModalProps = {
+  open: boolean
+  jobs: DownloadJob[]
+  sort: DownloadSort
+  sortOpen: boolean
+  onClose: () => void
+  onSortOpen: (next: boolean) => void
+  onSortChange: (sort: DownloadSort) => void
+  onClearFinished: () => void
+  onRemoveJob: (job: DownloadJob) => void
+  onPauseJob?: (job: DownloadJob) => void
+  onResumeJob?: (job: DownloadJob) => void
+}
+
+export function DownloadsModal({
+  open,
+  jobs,
+  sort,
+  sortOpen,
+  onClose,
+  onSortOpen,
+  onSortChange,
+  onClearFinished,
+  onRemoveJob,
+  onPauseJob,
+  onResumeJob,
+}: DownloadsModalProps) {
+  const sortedJobs = sortDownloadJobs(jobs, sort)
+  const activeJobs = jobs.filter((job) => isActiveDownloadJob(job) && !job.paused).length
+  const sortLabel = {
+    newest: 'Newest first',
+    oldest: 'Oldest first',
+    active: 'Active first',
+    finishedLast: 'Finished last',
+  }[sort]
+
+  return (
+    <AppModal
+      open={open}
+      title="Download"
+      icon={<HardDriveDownload size={15} />}
+      onClose={onClose}
+      className="download-modal-panel"
+      bodyClassName="flex min-h-0 flex-1 flex-col gap-2 p-3"
+      zClassName="z-40"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 px-1 text-[11px] text-[var(--mac-secondary)]">
+        <span>
+          {jobs.length} {jobs.length === 1 ? 'item' : 'items'}
+        </span>
+        <div className="flex items-center gap-2">
+          {jobs.length ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => onSortOpen(!sortOpen)}
+                className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+              >
+                {sortLabel}
+              </button>
+              {sortOpen ? (
+                <div className="absolute right-0 top-8 z-10 min-w-40 rounded-lg border border-[var(--mac-border)] bg-[var(--mac-elevated)] p-1 shadow-xl">
+                  {(['newest', 'oldest', 'active', 'finishedLast'] as DownloadSort[]).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        onSortChange(value)
+                        onSortOpen(false)
+                      }}
+                      className={`block h-7 w-full rounded-md px-2 text-left text-[11px] font-semibold ${
+                        value === sort
+                          ? 'bg-[var(--mac-control-hover)] text-[var(--mac-text)]'
+                          : 'text-[var(--mac-secondary)] hover:bg-[var(--mac-control)]'
+                      }`}
+                    >
+                      {value === 'newest' ? 'Newest first' : null}
+                      {value === 'oldest' ? 'Oldest first' : null}
+                      {value === 'active' ? 'Active first' : null}
+                      {value === 'finishedLast' ? 'Finished last' : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="h-7 rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] px-2 text-[11px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
+            onClick={onClearFinished}
+          >
+            Clear Finished
+          </button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {sortedJobs.length ? (
+          <div className="space-y-2">
+            {sortedJobs.map((job) => {
+              const status = job.status
+              const progress = Math.round((status?.progress ?? 0) * 100)
+              const isActive = isActiveDownloadJob(job) && !job.paused
+              const isPaused = Boolean(job.paused && isActiveDownloadJob(job))
+              const isStalled = status?.state === 'stalled'
+              const title = status?.name ?? job.stream.title
+              const stateLabel = job.paused ? 'paused' : status?.state || (job.error ? 'error' : 'queued')
+              return (
+                <div key={status?.id || job.pendingId || `${job.movie.id}-${job.stream.title}`} className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-2.5">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-md bg-[var(--mac-control)]">
+                      {isActive ? <Loader2 className="animate-spin text-[var(--mac-accent)]" size={14} /> : <HardDriveDownload size={14} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="truncate text-[13px] font-semibold">{job.movie.name}</h3>
+                        <span className="shrink-0 text-[11px] text-[var(--mac-secondary)]">{progress}%</span>
+                      </div>
+                      <p className="truncate text-[11px] leading-4 text-[var(--mac-secondary)]">{title}</p>
+
+                      {status ? (
+                        <div className="mt-1.5">
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mac-control)]">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                isActive ? 'animate-pulse' : ''
+                              } ${
+                                status.state.startsWith('error:')
+                                  ? 'bg-red-500'
+                                  : isStalled
+                                    ? 'bg-amber-500'
+                                    : status.complete
+                                      ? 'bg-emerald-500'
+                                      : 'bg-[var(--mac-accent)]'
+                              }`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--mac-secondary)]">
+                            <span className="font-medium text-[var(--mac-text)]">{stateLabel}</span>
+                            <span>{bytesLabel(status.speed)}/s</span>
+                            <span>{etaLabel(status.eta)}</span>
+                            <span>
+                              {bytesLabel(status.downloaded)} / {status.size > 0 ? bytesLabel(status.size) : 'Unknown'}
+                            </span>
+                            {status.connections && isActive ? <span>{status.connections} conn</span> : null}
+                          </div>
+                        </div>
+                      ) : job.error ? null : (
+                        <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--mac-secondary)]">
+                          <Loader2 className="animate-spin text-[var(--mac-accent)]" size={13} />
+                          Resolving Torbox result
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {isPaused && onResumeJob ? (
+                        <button
+                          type="button"
+                          onClick={() => onResumeJob(job)}
+                          className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
+                          title="Resume"
+                        >
+                          <Play size={13} />
+                        </button>
+                      ) : null}
+                      {isActive && onPauseJob ? (
+                        <button
+                          type="button"
+                          onClick={() => onPauseJob(job)}
+                          className="grid size-7 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
+                          title="Pause"
+                        >
+                          <Pause size={13} />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => onRemoveJob(job)}
+                        className="grid size-7 place-items-center rounded-md border border-transparent text-[var(--mac-secondary)] transition hover:border-[var(--mac-border)] hover:bg-[var(--mac-control-hover)] hover:text-[var(--mac-text)]"
+                        title="Cancel"
+                      >
+                        <span className="text-[13px] font-semibold">x</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {status?.statusMessage ? (
+                    <div
+                      className={`ml-[52px] mt-2 rounded-md border px-2.5 py-2 text-[11px] leading-4 ${
+                        status.state === 'stalled'
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-100'
+                          : 'border-[var(--mac-border)] bg-[var(--mac-surface)] text-[var(--mac-secondary)]'
+                      }`}
+                    >
+                      <div>{status.statusMessage}</div>
+                      {status.statusAction ? <div className="mt-1 font-medium">{status.statusAction}</div> : null}
+                    </div>
+                  ) : null}
+
+                  {status?.state.startsWith('error:') ? (
+                    <div className="ml-[52px] mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] leading-4 text-red-600 dark:text-red-200">
+                      Download failed: {status.state.replace(/^error:/, '').replace(/^\d+\s*/, '') || 'Unknown error'}
+                    </div>
+                  ) : null}
+
+                  {job.error && !status ? (
+                    <div className="ml-[52px] mt-2 rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-2 text-[11px] leading-4 text-red-600 dark:text-red-200">
+                      {job.error}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-[var(--mac-border)] bg-[var(--mac-surface)] p-3 text-[12px] text-[var(--mac-secondary)]">
+            Start a download from a stream result.
+          </div>
+        )}
+      </div>
+
+      {activeJobs ? (
+        <div className="mt-1 px-1 text-[11px] text-[var(--mac-secondary)]">
+          {activeJobs} active {activeJobs === 1 ? 'download' : 'downloads'}
+        </div>
+      ) : null}
+    </AppModal>
+  )
+}

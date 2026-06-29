@@ -1,0 +1,42 @@
+{
+  "name": "torfin",
+  "private": false,
+  "version": "1.0.0-beta",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:full": "concurrently -k -n web,api -c green,blue \"vite dev\" \"PORT=3020 node server.mjs\"",
+    "tauri:dev": "tauri dev",
+    "build": "tsc -b && vite build",
+    "tauri:build": "tauri build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:web-downloads": "node scripts/test-web-downloads.mjs",
+    "test:ui": "node scripts/ui-smoke-test.mjs",
+    "thinktower": "node scripts/deploy-thinktower.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "lucide-react": "^1.21.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "swr": "^2.4.2",
+    "video.js": "^8.23.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
+    "@tauri-apps/cli": "^2.11.3",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^9.2.3",
+    "oxlint": "^1.69.0",
+    "playwright": "^1.61.1",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.0",
+    "vitest": "^3.2.6"
+  }
+}
