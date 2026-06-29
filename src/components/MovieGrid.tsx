@@ -1,13 +1,16 @@
-import { Heart, Loader2, Star } from 'lucide-react'
+import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
 import type { Movie } from '../types'
+import { MovieGridSkeleton } from './MovieGridSkeleton'
+import { MoviePoster } from './MoviePoster'
 
 type MovieGridProps = {
   movies: Movie[]
   selectedMovieId?: string
   focusedMovieIndex?: number
   catalogId?: string
+  contentKey?: string
   watchlistIds?: Set<string>
   posterSize: number
   showYears: boolean
@@ -18,9 +21,20 @@ type MovieGridProps = {
   searchErrorMessage?: string
   hasMoreMovies: boolean
   shouldRemoteSearch: boolean
+  scrollRef: React.RefObject<HTMLDivElement | null>
   loadMoreRef: React.RefObject<HTMLDivElement | null>
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
+}
+
+function emptyMessage(catalogId?: string) {
+  if (catalogId === 'watchlist') {
+    return 'Your watchlist is empty. Use the heart icon on any title to save it here.'
+  }
+  if (catalogId === 'continue') {
+    return 'Nothing to continue yet. Start watching something and your progress will show up here.'
+  }
+  return 'No movies match the current search and filters.'
 }
 
 export function MovieGrid({
@@ -28,6 +42,7 @@ export function MovieGrid({
   selectedMovieId,
   focusedMovieIndex = -1,
   catalogId,
+  contentKey = '',
   watchlistIds,
   posterSize,
   showYears,
@@ -38,6 +53,7 @@ export function MovieGrid({
   searchErrorMessage = '',
   hasMoreMovies,
   shouldRemoteSearch,
+  scrollRef,
   loadMoreRef,
   onSelectMovie,
   onToggleWatchlist,
@@ -45,9 +61,11 @@ export function MovieGrid({
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
   )
+  const showLoadMore = !shouldRemoteSearch && hasMoreMovies && !loading
+  const showEmpty = !loading && !loadingMore && movies.length === 0
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
       {movieErrorMessage ? (
         <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-600 dark:text-red-200">
           {movieErrorMessage}
@@ -60,45 +78,40 @@ export function MovieGrid({
       ) : null}
 
       {loading ? (
-        <div className="grid h-full min-h-96 place-items-center">
-          <Loader2 className="animate-spin text-[var(--mac-accent)]" size={28} />
-        </div>
+        <MovieGridSkeleton posterSize={posterSize} />
       ) : movies.length ? (
-        <div className="grid gap-x-4 gap-y-5" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${posterSize}px, 1fr))` }}>
+        <div
+          key={contentKey}
+          className="grid gap-x-4 gap-y-5"
+          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${posterSize}px, 1fr))` }}
+        >
           {movies.map((movie, index) => {
             const progress = progressById.get(`${movie.type}:${movie.id}`)
             const inWatchlist = watchlistIds?.has(`${movie.type}:${movie.id}`)
             const isFocused = focusedMovieIndex === index
             return (
-              <div key={movie.id} className="group relative min-w-0">
+              <div
+                key={`${movie.type}:${movie.id}`}
+                className="movie-item-enter group relative min-w-0"
+                style={{ animationDelay: `${Math.min(index, 28) * 16}ms` }}
+              >
                 <button
                   type="button"
                   onClick={() => onSelectMovie(movie)}
-                  className="w-full rounded-lg text-left outline-none"
+                  className="w-full rounded-lg text-left outline-none active:scale-[0.98] transition-transform duration-100"
                 >
                   <div
-                    className={`aspect-[2/3] overflow-hidden rounded-lg border bg-[var(--mac-control)] shadow-sm transition ${
+                    className={`relative aspect-[2/3] overflow-hidden rounded-lg border bg-[var(--mac-control)] shadow-sm transition-[border-color,box-shadow] duration-150 ${
                       selectedMovieId === movie.id || isFocused
                         ? 'border-[var(--mac-accent)] ring-2 ring-[var(--mac-accent)]/30'
                         : 'border-[var(--mac-border)] group-hover:border-[var(--mac-border-strong)]'
                     }`}
                   >
-                    {movie.poster ? (
-                      <img
-                        src={movie.poster}
-                        alt=""
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="grid h-full place-items-center text-[var(--mac-tertiary)]">
-                        <Star size={20} />
-                      </div>
-                    )}
+                    <MoviePoster src={movie.poster} priority={index < 24} />
                     {progress && catalogId === 'continue' ? (
                       <div className="absolute inset-x-2 bottom-10 h-1 overflow-hidden rounded-full bg-black/40">
                         <div
-                          className="h-full rounded-full bg-[var(--mac-accent)]"
+                          className="h-full rounded-full bg-[var(--mac-accent)] transition-[width] duration-200"
                           style={{ width: `${progressPercent(progress)}%` }}
                         />
                       </div>
@@ -106,7 +119,7 @@ export function MovieGrid({
                   </div>
                   <div className="mt-2 min-h-12 px-1">
                     <div className="line-clamp-2 text-[13px] font-medium leading-[17px]">{movie.name}</div>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-[var(--mac-secondary)]">
+                    <div className="mt-1 flex min-h-[15px] items-center justify-between gap-2 text-[11px] text-[var(--mac-secondary)]">
                       <span>
                         {catalogId === 'continue' && progress
                           ? `${formatProgressLabel(progress) || movie.releaseInfo || 'Resume'}`
@@ -116,7 +129,7 @@ export function MovieGrid({
                       </span>
                       {showRatings && movie.imdbRating ? (
                         <span className="inline-flex items-center gap-1">
-                          <Star size={11} fill="currentColor" />
+                          <span className="text-[10px]">★</span>
                           {movie.imdbRating}
                         </span>
                       ) : null}
@@ -130,7 +143,7 @@ export function MovieGrid({
                       event.stopPropagation()
                       onToggleWatchlist(movie)
                     }}
-                    className={`absolute right-2 top-2 grid size-7 place-items-center rounded-full border border-black/20 bg-black/55 text-white transition hover:bg-black/75 ${
+                    className={`absolute right-2 top-2 grid size-7 place-items-center rounded-full border border-black/20 bg-black/55 text-white transition-[opacity,transform,background] duration-150 hover:scale-105 hover:bg-black/75 active:scale-95 ${
                       inWatchlist ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                     }`}
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
@@ -142,21 +155,21 @@ export function MovieGrid({
             )
           })}
 
-          {!shouldRemoteSearch && hasMoreMovies ? <div ref={loadMoreRef} className="h-10" /> : null}
+          {showLoadMore ? (
+            <div
+              ref={loadMoreRef}
+              className="col-span-full grid h-10 place-items-center"
+              aria-hidden={!loadingMore}
+            >
+              {loadingMore ? (
+                <Loader2 className="animate-spin text-[var(--mac-accent)]" size={18} />
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <div className="grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
-          {catalogId === 'watchlist'
-            ? 'Your watchlist is empty. Use the heart icon on any title to save it here.'
-            : catalogId === 'continue'
-              ? 'Nothing to continue yet. Start watching something and your progress will show up here.'
-              : 'No movies match the current search and filters.'}
-        </div>
-      )}
-
-      {loadingMore ? (
-        <div className="grid h-12 place-items-center">
-          <Loader2 className="animate-spin text-[var(--mac-accent)]" size={20} />
+      ) : showEmpty ? (
+        <div className="movie-empty-enter grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
+          {emptyMessage(catalogId)}
         </div>
       ) : null}
     </div>

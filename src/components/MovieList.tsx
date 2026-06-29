@@ -1,21 +1,81 @@
-import { Heart, Loader2, Star } from 'lucide-react'
+import { Heart, Loader2 } from 'lucide-react'
 
 import { formatProgressLabel, loadPlaybackProgress, progressPercent } from '../lib/playback-progress'
-import type { Movie } from '../types'
+import type { Movie, PlaybackProgress } from '../types'
+import { MoviePoster } from './MoviePoster'
 
 type MovieListProps = {
   movies: Movie[]
   selectedMovieId?: string
   focusedMovieIndex?: number
   catalogId?: string
+  contentKey?: string
   watchlistIds?: Set<string>
   showYears: boolean
   showRatings: boolean
   loading: boolean
+  loadingMore: boolean
   movieErrorMessage?: string
   searchErrorMessage?: string
+  hasMoreMovies: boolean
+  shouldRemoteSearch: boolean
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  loadMoreRef: React.RefObject<HTMLDivElement | null>
   onSelectMovie: (movie: Movie) => void
   onToggleWatchlist?: (movie: Movie) => void
+}
+
+function emptyMessage(catalogId?: string) {
+  if (catalogId === 'watchlist') return 'Your watchlist is empty.'
+  if (catalogId === 'continue') return 'Nothing to continue yet.'
+  if (catalogId === 'recent') return 'Titles you open will appear here.'
+  return 'No movies match the current search and filters.'
+}
+
+function movieMetaLine(
+  movie: Movie,
+  {
+    catalogId,
+    progress,
+    showYears,
+    showRatings,
+  }: {
+    catalogId?: string
+    progress?: PlaybackProgress
+    showYears: boolean
+    showRatings: boolean
+  },
+) {
+  const parts: string[] = []
+  if (catalogId === 'continue' && progress) parts.push(formatProgressLabel(progress))
+  if (showYears && movie.releaseInfo) parts.push(movie.releaseInfo)
+  if (movie.genres?.length) parts.push(...movie.genres.slice(0, 2))
+  if (showRatings && movie.imdbRating) parts.push(`★ ${movie.imdbRating}`)
+  return parts.join(' · ')
+}
+
+function ListSkeleton() {
+  return (
+    <div
+      className="grid grid-cols-1 gap-1.5 @min-[380px]:grid-cols-2 @min-[580px]:grid-cols-3 @min-[780px]:grid-cols-4"
+      aria-busy
+      aria-label="Loading titles"
+    >
+      {Array.from({ length: 12 }, (_, index) => (
+        <div
+          key={index}
+          className="movie-skeleton-enter flex min-w-0 items-center gap-2 rounded-md border border-[var(--mac-border)] bg-[var(--mac-surface)] p-1.5"
+          style={{ animationDelay: `${index * 18}ms` }}
+        >
+          <div className="movie-poster-skeleton h-10 w-7 shrink-0 rounded" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="movie-poster-skeleton h-3 w-[85%] rounded" />
+            <div className="movie-poster-skeleton h-2.5 w-[55%] rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function MovieList({
@@ -23,83 +83,81 @@ export function MovieList({
   selectedMovieId,
   focusedMovieIndex = -1,
   catalogId,
+  contentKey = '',
   watchlistIds,
   showYears,
   showRatings,
   loading,
+  loadingMore,
   movieErrorMessage = '',
   searchErrorMessage = '',
+  hasMoreMovies,
+  shouldRemoteSearch,
+  scrollRef,
+  loadMoreRef,
   onSelectMovie,
   onToggleWatchlist,
 }: MovieListProps) {
   const progressById = new Map(
     loadPlaybackProgress().map((entry) => [`${entry.type}:${entry.movieId}`, entry]),
   )
-
-  if (loading) {
-    return (
-      <div className="grid h-full min-h-96 place-items-center">
-        <Loader2 className="animate-spin text-[var(--mac-accent)]" size={28} />
-      </div>
-    )
-  }
+  const showEmpty = !loading && !loadingMore && movies.length === 0
+  const showLoadMore = !shouldRemoteSearch && hasMoreMovies && !loading
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+    <div ref={scrollRef} className="@container min-h-0 flex-1 overflow-y-auto px-3 py-3">
       {movieErrorMessage ? (
-        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-600 dark:text-red-200">
+        <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-600 dark:text-red-200">
           {movieErrorMessage}
         </div>
       ) : null}
       {searchErrorMessage ? (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[13px] text-amber-700 dark:text-amber-200">
+        <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-[13px] text-amber-700 dark:text-amber-200">
           {searchErrorMessage}
         </div>
       ) : null}
 
-      {movies.length ? (
-        <div className="space-y-2">
+      {loading ? (
+        <ListSkeleton />
+      ) : movies.length ? (
+        <div
+          key={contentKey}
+          className="grid grid-cols-1 gap-1.5 @min-[380px]:grid-cols-2 @min-[580px]:grid-cols-3 @min-[780px]:grid-cols-4"
+        >
           {movies.map((movie, index) => {
             const progress = progressById.get(`${movie.type}:${movie.id}`)
             const inWatchlist = watchlistIds?.has(`${movie.type}:${movie.id}`)
             const isFocused = focusedMovieIndex === index
+            const metaLine = movieMetaLine(movie, { catalogId, progress, showYears, showRatings })
             return (
               <div
                 key={`${movie.type}:${movie.id}`}
-                className={`group flex items-center gap-3 rounded-lg border bg-[var(--mac-surface)] p-2 transition ${
+                className={`movie-item-enter group flex min-w-0 items-center gap-1.5 rounded-md border bg-[var(--mac-surface)] p-1.5 transition-[border-color,box-shadow,transform] duration-150 active:scale-[0.995] ${
                   selectedMovieId === movie.id || isFocused
                     ? 'border-[var(--mac-accent)] ring-2 ring-[var(--mac-accent)]/20'
                     : 'border-[var(--mac-border)] hover:border-[var(--mac-border-strong)]'
                 }`}
+                style={{ animationDelay: `${Math.min(index, 20) * 10}ms` }}
               >
-                <button type="button" onClick={() => onSelectMovie(movie)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <div className="h-16 w-11 shrink-0 overflow-hidden rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]">
-                    {movie.poster ? (
-                      <img src={movie.poster} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="grid h-full place-items-center text-[var(--mac-tertiary)]">
-                        <Star size={16} />
-                      </div>
-                    )}
+                <button
+                  type="button"
+                  onClick={() => onSelectMovie(movie)}
+                  className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left"
+                >
+                  <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded border border-[var(--mac-border)] bg-[var(--mac-control)]">
+                    <MoviePoster src={movie.poster} iconSize={12} priority={index < 20} />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14px] font-semibold">{movie.name}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--mac-secondary)]">
-                      {catalogId === 'continue' && progress ? <span>{formatProgressLabel(progress)}</span> : null}
-                      {showYears && movie.releaseInfo ? <span>{movie.releaseInfo}</span> : null}
-                      {movie.genres?.slice(0, 2).map((genre) => (
-                        <span key={genre}>{genre}</span>
-                      ))}
-                      {showRatings && movie.imdbRating ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Star size={11} fill="currentColor" />
-                          {movie.imdbRating}
-                        </span>
-                      ) : null}
-                    </div>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="truncate text-[12px] font-medium leading-snug">{movie.name}</div>
+                    {metaLine ? (
+                      <div className="mt-0.5 truncate text-[10px] leading-snug text-[var(--mac-secondary)]">{metaLine}</div>
+                    ) : null}
                     {progress && catalogId === 'continue' ? (
-                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--mac-control)]">
-                        <div className="h-full rounded-full bg-[var(--mac-accent)]" style={{ width: `${progressPercent(progress)}%` }} />
+                      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-[var(--mac-control)]">
+                        <div
+                          className="h-full rounded-full bg-[var(--mac-accent)] transition-[width] duration-200"
+                          style={{ width: `${progressPercent(progress)}%` }}
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -108,27 +166,33 @@ export function MovieList({
                   <button
                     type="button"
                     onClick={() => onToggleWatchlist(movie)}
-                    className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)]"
+                    className="grid size-6 shrink-0 place-items-center rounded border border-[var(--mac-border)] bg-[var(--mac-control)] transition-[transform,background] duration-150 hover:bg-[var(--mac-control-hover)] active:scale-95"
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
                   >
-                    <Heart size={14} fill={inWatchlist ? 'currentColor' : 'none'} />
+                    <Heart size={11} fill={inWatchlist ? 'currentColor' : 'none'} />
                   </button>
                 ) : null}
               </div>
             )
           })}
+
+          {showLoadMore ? (
+            <div
+              ref={loadMoreRef}
+              className="col-span-full grid h-10 place-items-center"
+              aria-hidden={!loadingMore}
+            >
+              {loadingMore ? (
+                <Loader2 className="animate-spin text-[var(--mac-accent)]" size={18} />
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      ) : (
-        <div className="grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
-          {catalogId === 'watchlist'
-            ? 'Your watchlist is empty.'
-            : catalogId === 'continue'
-              ? 'Nothing to continue yet.'
-              : catalogId === 'recent'
-                ? 'Titles you open will appear here.'
-                : 'No movies match the current search and filters.'}
+      ) : showEmpty ? (
+        <div className="movie-empty-enter grid h-full min-h-96 place-items-center px-6 text-center text-[13px] leading-5 text-[var(--mac-secondary)]">
+          {emptyMessage(catalogId)}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

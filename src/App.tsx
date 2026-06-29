@@ -14,6 +14,8 @@ import { MovieList } from './components/MovieList'
 import { PreferencesModal } from './components/PreferencesModal'
 import { Sidebar } from './components/Sidebar'
 import { useAppModalRoute } from './hooks/useAppModalRoute'
+import { useCatalogScrollLoad } from './hooks/useCatalogScrollLoad'
+import { readAppRoute } from './lib/app-routes'
 import { useDebouncedValue } from './hooks/useDebouncedValue'
 import { useDockBadge } from './hooks/useDockBadge'
 import { useDownloadNotifications } from './hooks/useDownloadNotifications'
@@ -147,11 +149,27 @@ function loadDownloadConfig() {
   return migrateDownloadConfig(stored, isTauriRuntime())
 }
 
+function initialBrowseState() {
+  const route = readAppRoute()
+  const isDefaultHome =
+    typeof window !== 'undefined' &&
+    window.location.pathname === '/' &&
+    !route.title &&
+    !route.modal &&
+    !route.searchQuery
+  return {
+    contentType: isDefaultHome ? loadContentType() : route.contentType,
+    catalogId: route.catalogId,
+    query: route.searchQuery ?? '',
+  }
+}
+
 export default function App() {
   const tauri = isTauriRuntime()
-  const [contentType, setContentType] = useState<ContentType>(loadContentType)
-  const [catalogId, setCatalogId] = useState<string>(catalogOptions[0]?.id ?? 'trending')
-  const [query, setQuery] = useState('')
+  const initialBrowse = initialBrowseState()
+  const [contentType, setContentType] = useState<ContentType>(initialBrowse.contentType)
+  const [catalogId, setCatalogId] = useState<string>(initialBrowse.catalogId)
+  const [query, setQuery] = useState(initialBrowse.query)
   const [movies, setMovies] = useState<Movie[]>([])
   const [catalogSkip, setCatalogSkip] = useState(0)
   const [hasMoreMovies, setHasMoreMovies] = useState(true)
@@ -209,12 +227,26 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const moviePanelScrollRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const pendingAutoPlayRef = useRef(false)
 
   const { torboxApiKey, jellyfinApiKey, sshPassword, loaded: secretsLoaded, setTorboxApiKey, setJellyfinApiKey } = useSecrets()
-  const { route, closeModal, openSettings, openDownloads, openFilters, setSettingsTab } = useAppModalRoute()
+  const {
+    route,
+    closeModal,
+    openSettings,
+    openDownloads,
+    openFilters,
+    setSettingsTab,
+    navigateBrowse,
+    navigateSearch,
+    navigateToTitle,
+    closeTitle,
+    routeUrl,
+  } = useAppModalRoute()
+  const titleLoadRef = useRef<string | null>(null)
   const debouncedQuery = useDebouncedValue(query, 300).trim()
   const shouldRemoteSearch = debouncedQuery.length >= 2
   const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
@@ -245,11 +277,12 @@ export default function App() {
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
   const filterPresets = useMemo(() => allFilterPresets(), [customFilterPresets])
 
-  const { data: catalogData, error: catalogError, isLoading: catalogLoading } = useSWR(
+  const { data: catalogData, error: catalogError, isLoading: catalogLoading, isValidating: catalogValidating } = useSWR(
     isLibraryCatalog(catalogId) ? null : ['catalog', contentType, filteredCatalogUrl],
     ([, type, url]) => loadJson<{ metas?: unknown[] }>(catalogPageUrl(url, 0)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]),
+    { keepPreviousData: false },
   )
-  const { data: searchData, error: searchError, isLoading: searchLoading } = useSWR(shouldRemoteSearch ? ['search', contentType, debouncedQuery] : null, ([, type, value]) => loadJson<{ metas?: unknown[] }>(searchUrl(value, type as ContentType)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]))
+  const { data: searchData, error: searchError, isLoading: searchLoading, isValidating: searchValidating } = useSWR(shouldRemoteSearch ? ['search', contentType, debouncedQuery] : null, ([, type, value]) => loadJson<{ metas?: unknown[] }>(searchUrl(value, type as ContentType)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]))
   const { data: seriesEpisodes, error: seriesMetaError, isLoading: seriesMetaLoading } = useSWR(
     selectedMovie?.type === 'series' ? ['series-meta', selectedMovie.id] : null,
     () => loadJson<{ meta?: { videos?: unknown[] } }>(metaUrl('series', selectedMovie!.id)).then((body) => normalizeSeriesEpisodes(body)),
@@ -317,9 +350,9 @@ export default function App() {
   useDockBadge(downloadJobs)
 
   useEffect(() => {
-    switch (route.kind) {
+    switch (route.modal?.kind) {
       case 'settings':
-        setPreferencesTab(route.tab)
+        setPreferencesTab(route.modal.tab)
         setPreferencesOpen(true)
         setDownloadsOpen(false)
         setFiltersOpen(false)
@@ -334,13 +367,98 @@ export default function App() {
         setPreferencesOpen(false)
         setDownloadsOpen(false)
         break
-      case 'none':
+      default:
         setPreferencesOpen(false)
         setDownloadsOpen(false)
         setFiltersOpen(false)
         break
     }
-  }, [route])
+  }, [route.modal])
+
+  useEffect(() => {
+    if (route.contentType !== contentType) setContentType(route.contentType)
+    if (route.searchQuery !== undefined) {
+      if (route.searchQuery !== query) setQuery(route.searchQuery)
+      return
+    }
+    if (route.catalogId !== catalogId) setCatalogId(route.catalogId)
+  }, [route.contentType, route.catalogId, route.searchQuery, contentType, catalogId, query])
+
+  const prevRouteUrlRef = useRef(routeUrl)
+  useEffect(() => {
+    const urlChanged = prevRouteUrlRef.current !== routeUrl
+    prevRouteUrlRef.current = routeUrl
+    if (urlChanged && route.searchQuery === undefined && query) {
+      setQuery('')
+    }
+  }, [routeUrl, route.searchQuery, query])
+
+  useEffect(() => {
+    if (!route.title) {
+      titleLoadRef.current = null
+      return
+    }
+
+    const { type, id, season, episode } = route.title
+    const key = `${type}:${id}:${season ?? ''}:${episode ?? ''}`
+
+    if (selectedMovie?.id === id && selectedMovie.type === type) {
+      if (season != null && selectedSeason !== season) setSelectedSeason(season)
+      if (episode != null && selectedEpisode !== episode) setSelectedEpisode(episode)
+      return
+    }
+
+    const fromLists =
+      movies.find((entry) => entry.id === id && entry.type === type) ??
+      watchlist.find((entry) => entry.id === id && entry.type === type) ??
+      recentViews.find((entry) => entry.id === id && entry.type === type)
+
+    if (fromLists) {
+      setSelectedMovie(fromLists)
+      setRecentViews(recordRecentView(fromLists))
+      if (season != null) setSelectedSeason(season)
+      if (episode != null) setSelectedEpisode(episode)
+      return
+    }
+
+    if (titleLoadRef.current === key) return
+    titleLoadRef.current = key
+
+    let cancelled = false
+    void loadJson<Record<string, unknown>>(metaUrl(type, id)).then((body) => {
+      if (cancelled) return
+      const meta = (body.meta ?? body) as Parameters<typeof normalizeCatalogItem>[0]
+      const movie = normalizeCatalogItem(meta, type)
+      if (!movie) return
+      setSelectedMovie(movie)
+      setRecentViews(recordRecentView(movie))
+      if (season != null) setSelectedSeason(season)
+      if (episode != null) setSelectedEpisode(episode)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [route.title, movies, watchlist, recentViews, selectedMovie?.id, selectedMovie?.type, selectedSeason, selectedEpisode])
+
+  useEffect(() => {
+    if (route.title) return
+    if (!selectedMovie) return
+    setSelectedMovie(null)
+    setPlaybackUrl('')
+    setPlaybackError('')
+    setPlaybackStatus('')
+  }, [route.title, selectedMovie])
+
+  useEffect(() => {
+    if (debouncedQuery.length >= 2) {
+      if (route.searchQuery !== debouncedQuery) {
+        navigateSearch(contentType, debouncedQuery, true)
+      }
+    } else if (route.searchQuery) {
+      navigateBrowse(contentType, catalogId, true)
+    }
+  }, [debouncedQuery, contentType, catalogId, navigateBrowse, navigateSearch, route.searchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -367,28 +485,29 @@ export default function App() {
 
   useEffect(() => {
     if (isLibraryCatalog(catalogId)) {
-      setSelectedMovie(null)
       setMovieError('')
       setCatalogSkip(0)
       setHasMoreMovies(false)
+      setLoadingMoreMovies(false)
       return
     }
 
-    setSelectedMovie(null)
     setSelectedSeason(null)
     setSelectedEpisode(null)
     setMovieError('')
+    setMovies([])
+    setCatalogSkip(0)
+    setHasMoreMovies(true)
+    setLoadingMoreMovies(false)
+  }, [catalogId, contentType, filteredCatalogUrl])
 
-    if (catalogData) {
-      setMovies(catalogData)
-      setCatalogSkip(catalogPageSize)
-      setHasMoreMovies(catalogData.length > 0)
-    } else {
-      setMovies([])
-      setCatalogSkip(0)
-      setHasMoreMovies(true)
-    }
-  }, [catalogData, catalogId, contentType, filteredCatalogUrl])
+  useEffect(() => {
+    if (isLibraryCatalog(catalogId) || catalogLoading || catalogValidating || !catalogData) return
+    setMovies(catalogData)
+    setCatalogSkip(catalogPageSize)
+    setHasMoreMovies(catalogData.length >= catalogPageSize)
+    setMovieError('')
+  }, [catalogData, catalogId, catalogLoading, catalogValidating])
 
   useEffect(() => {
     if (!isLibraryCatalog(catalogId)) return
@@ -419,10 +538,22 @@ export default function App() {
       return
     }
     if (!seriesEpisodes?.length) return
+
+    if (
+      route.title?.id === selectedMovie.id &&
+      route.title.season != null &&
+      route.title.episode != null
+    ) {
+      setSelectedSeason(route.title.season)
+      setSelectedEpisode(route.title.episode)
+      return
+    }
+
     const first = seriesEpisodes.find((entry) => entry.season >= 1) ?? seriesEpisodes[0]
     setSelectedSeason(first.season)
     setSelectedEpisode(first.episode)
-  }, [selectedMovie?.id, selectedMovie?.type, seriesEpisodes])
+    navigateToTitle(selectedMovie, first.season, first.episode, true)
+  }, [navigateToTitle, route.title, selectedMovie, seriesEpisodes])
   useEffect(() => { setResultProfile(preferences.defaultProfile) }, [preferences.defaultProfile])
   useEffect(() => { setResultsExpanded(false) }, [resultProfile, selectedMovie?.id, selectedSeason, selectedEpisode])
 
@@ -503,7 +634,14 @@ export default function App() {
   const topStreamQuality = compactStreams[0] ? streamTargetQuality(compactStreams[0]) : 0
   const jellyfinItemUrl = jellyfinMatch ? jellyfinPlayUrl(effectiveDownloadConfig.jellyfinUrl, jellyfinMatch.itemId) : ''
 
-  const moviesLoading = !isLibraryCatalog(catalogId) && (catalogLoading || (!catalogError && !catalogData && !movies.length))
+  const libraryContentKey = `${contentType}:${catalogId}`
+  const catalogContentKey = `${contentType}:${filteredCatalogUrl}`
+  const moviesContentKey = shouldRemoteSearch ? `${contentType}:search:${debouncedQuery}` : isLibraryCatalog(catalogId) ? libraryContentKey : catalogContentKey
+  const moviesLoading = isLibraryCatalog(catalogId)
+    ? false
+    : shouldRemoteSearch
+      ? (searchLoading || (searchValidating && !searchData?.length))
+      : catalogLoading || catalogValidating || (!catalogError && !catalogData && !movies.length)
   const movieErrorMessage = movieError || (catalogError instanceof Error ? catalogError.message : catalogError ? `Could not load ${contentLabelPlural.toLowerCase()}` : '')
   const searchErrorMessage = searchError instanceof Error ? searchError.message : searchError ? 'Search failed' : ''
   const streamEmptyMessage = activePlugins.length === 0
@@ -573,9 +711,21 @@ export default function App() {
 
   function handleSearchPerson(name: string) {
     setQuery(name)
-    setSelectedMovie(null)
+    closeTitle()
     setSearchHistoryOpen(false)
     searchRef.current?.focus()
+  }
+
+  function handleContentTypeChange(next: ContentType) {
+    setContentType(next)
+    closeTitle()
+    navigateBrowse(next, catalogId)
+  }
+
+  function handleCatalogChange(nextCatalogId: string) {
+    setCatalogId(nextCatalogId)
+    closeTitle()
+    navigateBrowse(contentType, nextCatalogId)
   }
 
   function updateDownloadConfig(next: DownloadConfig) {
@@ -770,7 +920,9 @@ export default function App() {
   function handleSeasonChange(season: number) {
     setSelectedSeason(season)
     const firstEpisode = seriesEpisodes?.find((entry) => entry.season === season)
-    setSelectedEpisode(firstEpisode?.episode ?? null)
+    const episode = firstEpisode?.episode ?? null
+    setSelectedEpisode(episode)
+    if (selectedMovie) navigateToTitle(selectedMovie, season, episode, true)
   }
 
   async function playStream(stream: StreamResult, index: number) {
@@ -821,6 +973,7 @@ export default function App() {
     pendingAutoPlayRef.current = true
     setSelectedSeason(next.season)
     setSelectedEpisode(next.episode)
+    navigateToTitle(selectedMovie, next.season, next.episode, true)
     setPlaybackUrl('')
     setPlaybackStatus('Loading next episode')
   }, [episodeSelection, preferences.autoPlayNextEpisode, selectedMovie, seriesEpisodes])
@@ -888,6 +1041,7 @@ export default function App() {
   }
 
   function handleSelectMovie(movie: Movie) {
+    navigateToTitle(movie)
     setSelectedMovie(movie)
     setRecentViews(recordRecentView(movie))
     setFocusedMovieIndex(displayedMovies.findIndex((entry) => entry.id === movie.id))
@@ -895,10 +1049,17 @@ export default function App() {
   }
 
   function handleCloseInspector() {
-    setSelectedMovie(null)
+    closeTitle()
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
+  }
+
+  function handleEpisodeChange(episode: number) {
+    setSelectedEpisode(episode)
+    if (selectedMovie && selectedSeason !== null) {
+      navigateToTitle(selectedMovie, selectedSeason, episode, true)
+    }
   }
 
   useKeyboardShortcuts({
@@ -951,21 +1112,14 @@ export default function App() {
     }
   }, [catalogSkip, contentType, filteredCatalogUrl, hasMoreMovies, loadingMoreMovies, shouldRemoteSearch])
 
-  useEffect(() => {
-    if (shouldRemoteSearch || !hasMoreMovies) return
-    const marker = loadMoreRef.current
-    if (!marker) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          void loadNextPage()
-        }
-      },
-      { rootMargin: '700px 0px' },
-    )
-    observer.observe(marker)
-    return () => observer.disconnect()
-  }, [hasMoreMovies, loadNextPage, shouldRemoteSearch])
+  useCatalogScrollLoad({
+    scrollRef: moviePanelScrollRef,
+    loadMoreRef,
+    loadNextPage,
+    enabled: !shouldRemoteSearch && hasMoreMovies && !moviesLoading && !loadingMoreMovies,
+    itemCount: displayedMovies.length,
+    layoutKey: preferences.libraryViewMode,
+  })
 
   function startSidebarResize(side: 'left' | 'right', event: ReactPointerEvent<HTMLButtonElement>) {
     event.preventDefault()
@@ -1021,11 +1175,11 @@ export default function App() {
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
             downloadSummary={downloadSummary}
-            onContentTypeChange={setContentType}
-            onCatalogChange={setCatalogId}
+            onContentTypeChange={handleContentTypeChange}
+            onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
-            onResetSelection={() => setSelectedMovie(null)}
+            onResetSelection={handleCloseInspector}
           />
         ) : null}
 
@@ -1044,11 +1198,11 @@ export default function App() {
             preferencesOpen={preferencesOpen}
             downloadsOpen={downloadsOpen}
             downloadSummary={downloadSummary}
-            onContentTypeChange={setContentType}
-            onCatalogChange={setCatalogId}
+            onContentTypeChange={handleContentTypeChange}
+            onCatalogChange={handleCatalogChange}
             onOpenPreferences={() => openSettings('general')}
             onOpenDownloads={openDownloads}
-            onResetSelection={() => setSelectedMovie(null)}
+            onResetSelection={handleCloseInspector}
           />
         ) : null}
 
@@ -1072,11 +1226,21 @@ export default function App() {
                 <Menu size={18} />
               </button>
             ) : null}
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-[15px] font-semibold tracking-normal">{selectedCatalog.label}</h2>
-              <p className="text-[11px] text-[var(--mac-secondary)]">
-                {(catalogLoading || searchLoading) ? 'Loading' : `${displayedMovies.length} ${displayedMovies.length === 1 ? contentLabelSingular : contentLabelPlural}`}
-              </p>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="min-w-0">
+                <h2 className="truncate text-[15px] font-semibold tracking-normal">{selectedCatalog.label}</h2>
+                <p className="text-[11px] text-[var(--mac-secondary)] transition-opacity duration-150">
+                  {moviesLoading ? 'Loading…' : `${displayedMovies.length} ${displayedMovies.length === 1 ? contentLabelSingular : contentLabelPlural}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => updatePreferences({ libraryViewMode: preferences.libraryViewMode === 'grid' ? 'list' : 'grid' })}
+                className="grid size-8 shrink-0 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] transition hover:bg-[var(--mac-control-hover)]"
+                title={preferences.libraryViewMode === 'grid' ? 'List view' : 'Grid view'}
+              >
+                {preferences.libraryViewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
+              </button>
             </div>
             <div className="relative w-40 shrink-0 sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-2 text-[var(--mac-tertiary)]" size={15} />
@@ -1123,14 +1287,6 @@ export default function App() {
             </div>
             <button
               type="button"
-              onClick={() => updatePreferences({ libraryViewMode: preferences.libraryViewMode === 'grid' ? 'list' : 'grid' })}
-              className="grid size-8 place-items-center rounded-md border border-[var(--mac-border)] bg-[var(--mac-control)] transition hover:bg-[var(--mac-control-hover)]"
-              title={preferences.libraryViewMode === 'grid' ? 'List view' : 'Grid view'}
-            >
-              {preferences.libraryViewMode === 'grid' ? <List size={16} /> : <LayoutGrid size={16} />}
-            </button>
-            <button
-              type="button"
               onClick={openFilters}
               className={`grid size-8 place-items-center rounded-md border border-[var(--mac-border)] transition hover:bg-[var(--mac-control-hover)] ${
                 Object.values(movieFilters).some((value) => value && value !== 'catalog')
@@ -1149,12 +1305,18 @@ export default function App() {
               selectedMovieId={selectedMovie?.id}
               focusedMovieIndex={focusedMovieIndex}
               catalogId={catalogId}
+              contentKey={moviesContentKey}
               watchlistIds={watchlistIds}
               showYears={preferences.showYears}
               showRatings={preferences.showRatings}
               loading={moviesLoading}
+              loadingMore={loadingMoreMovies}
               movieErrorMessage={movieErrorMessage}
               searchErrorMessage={searchErrorMessage}
+              hasMoreMovies={hasMoreMovies}
+              shouldRemoteSearch={shouldRemoteSearch}
+              scrollRef={moviePanelScrollRef}
+              loadMoreRef={loadMoreRef}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
             />
@@ -1164,6 +1326,7 @@ export default function App() {
               selectedMovieId={selectedMovie?.id}
               focusedMovieIndex={focusedMovieIndex}
               catalogId={catalogId}
+              contentKey={moviesContentKey}
               watchlistIds={watchlistIds}
               posterSize={preferences.posterSize}
               showYears={preferences.showYears}
@@ -1174,6 +1337,7 @@ export default function App() {
               searchErrorMessage={searchErrorMessage}
               hasMoreMovies={hasMoreMovies}
               shouldRemoteSearch={shouldRemoteSearch}
+              scrollRef={moviePanelScrollRef}
               loadMoreRef={loadMoreRef}
               onSelectMovie={handleSelectMovie}
               onToggleWatchlist={handleToggleWatchlist}
@@ -1209,7 +1373,7 @@ export default function App() {
           selectedSeason={selectedSeason}
           selectedEpisode={selectedEpisode}
           onSeasonChange={handleSeasonChange}
-          onEpisodeChange={setSelectedEpisode}
+          onEpisodeChange={handleEpisodeChange}
           onDownloadSeason={() => { void downloadSeason() }}
           batchDownloading={batchDownloading}
           streams={streams}

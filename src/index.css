@@ -185,13 +185,19 @@ html[data-theme="dark"] .mac-elevated {
   min-width: 6px;
   cursor: col-resize;
   border: 0;
-  border-left: 1px solid var(--mac-divider, var(--mac-border));
-  border-right: 1px solid transparent;
   background: transparent;
   padding: 0;
   transition:
     background 120ms ease,
     border-color 120ms ease;
+}
+
+.app-splitter-left {
+  border-right: 1px solid var(--mac-divider, var(--mac-border));
+}
+
+.app-splitter-right {
+  border-left: 1px solid var(--mac-divider, var(--mac-border));
 }
 
 .app-splitter::after {
@@ -202,17 +208,28 @@ html[data-theme="dark"] .mac-elevated {
   background: transparent;
 }
 
-.app-splitter:hover,
-.app-splitter:focus-visible,
-.is-resizing-layout .app-splitter {
+.app-splitter-left:hover,
+.app-splitter-left:focus-visible,
+.is-resizing-layout .app-splitter-left {
+  border-right-color: color-mix(in srgb, var(--mac-accent) 28%, var(--mac-divider, var(--mac-border)));
+  background: color-mix(in srgb, var(--mac-accent) 6%, transparent);
+  outline: none;
+}
+
+.app-splitter-right:hover,
+.app-splitter-right:focus-visible,
+.is-resizing-layout .app-splitter-right {
   border-left-color: color-mix(in srgb, var(--mac-accent) 28%, var(--mac-divider, var(--mac-border)));
   background: color-mix(in srgb, var(--mac-accent) 6%, transparent);
   outline: none;
 }
 
-.app-splitter:hover::after,
-.app-splitter:focus-visible::after,
-.is-resizing-layout .app-splitter::after {
+.app-splitter-left:hover::after,
+.app-splitter-left:focus-visible::after,
+.is-resizing-layout .app-splitter-left::after,
+.app-splitter-right:hover::after,
+.app-splitter-right:focus-visible::after,
+.is-resizing-layout .app-splitter-right::after {
   background: color-mix(in srgb, var(--mac-accent) 35%, transparent);
 }
 
@@ -582,5 +599,100 @@ html[data-theme="dark"] .mac-elevated {
   .movie-player .vjs-playback-rate,
   .movie-player .vjs-picture-in-picture-control {
     display: none;
+  }
+}
+
+/* ── Movie library motion ───────────────────────────────────────────────── */
+
+@keyframes movie-item-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes movie-skeleton-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes movie-empty-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes movie-poster-reveal {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes movie-poster-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.movie-item-enter {
+  animation: movie-item-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.movie-skeleton-enter {
+  animation: movie-skeleton-enter 160ms ease-out both;
+}
+
+.movie-empty-enter {
+  animation: movie-empty-enter 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.movie-poster-reveal {
+  animation: movie-poster-reveal 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.movie-poster-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--mac-control) 0%,
+    color-mix(in srgb, var(--mac-control) 55%, var(--mac-elevated)) 45%,
+    var(--mac-control) 90%
+  );
+  background-size: 200% 100%;
+  animation: movie-poster-shimmer 1.1s ease-in-out infinite;
+}
+
+.movie-grid-swap {
+  animation: movie-item-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .movie-item-enter,
+  .movie-skeleton-enter,
+  .movie-empty-enter,
+  .movie-poster-reveal,
+  .movie-grid-swap,
+  .movie-poster-skeleton {
+    animation: none !important;
   }
 }
