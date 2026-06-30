@@ -110,7 +110,7 @@ function dedupeStreams(streams: StreamResult[]) {
 
 export function filterStreamsForProfile(
   streams: StreamResult[],
-  profile: ResultProfile,
+  _profile: ResultProfile,
   preferCachedResults: boolean,
   customProfile?: CustomStreamProfile,
   torboxApiKey = '',
