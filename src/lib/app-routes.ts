@@ -1,4 +1,4 @@
-import { catalogOptions, libraryCatalogOptions } from './movies'
+import { catalogOptions, legalCatalogOptions, libraryCatalogOptions } from './movies'
 import type { ContentType, PreferencesTab } from '../types'
 
 export type AppRouteModal =
@@ -45,6 +45,7 @@ function isPreferencesTab(value: string | null | undefined): value is Preference
 
 const CATALOG_IDS = new Set<string>([
   ...libraryCatalogOptions.map((option) => option.id),
+  ...legalCatalogOptions.map((option) => option.id),
   ...catalogOptions.map((option) => option.id),
 ])
 

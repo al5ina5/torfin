@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, Heart, History, Loader2, Pause, Scale, Settings2, SlidersHorizontal, TriangleAlert, Tv } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clapperboard, Clock, Copyright, Download, Film, Heart, History, Loader2, Pause, Scale, Scroll, Settings2, SlidersHorizontal, TriangleAlert, Tv } from 'lucide-react'
 
 import { appRouteToUrl, browseRoute, presetRoute, withModal } from '../lib/app-routes'
 import { builtInFilterPresets, FEATURED_PRESET_COUNT, pickFeaturedPresets, presetRouteSlug } from '../lib/filter-presets'
 import { topGenres } from '../lib/genres'
-import { catalogOptions, isLibraryCatalog, libraryCatalogOptions } from '../lib/movies'
+import { catalogOptions, isLibraryCatalog, legalCatalogOptions, libraryCatalogOptions } from '../lib/movies'
 import type { DownloadSidebarPhase, DownloadSidebarSummary } from '../lib/downloads'
 import type { ContentType, FilterPreset, MovieFilters } from '../types'
 import { AppDrawer } from './AppDrawer'
@@ -36,7 +36,7 @@ type SidebarProps = {
   onClose?: () => void
 }
 
-const groups = ['Library', 'Now', 'Genres']
+const groups = ['Free & Legal', 'Library', 'Now', 'Genres']
 
 const downloadPhaseLabels: Record<Exclude<DownloadSidebarPhase, 'idle'>, string> = {
   starting: 'Starting',
@@ -85,7 +85,7 @@ function SidebarContent({
   mobile = false,
   onClose,
 }: SidebarProps) {
-  const allOptions = [...libraryCatalogOptions, ...catalogOptions]
+  const allOptions = [...legalCatalogOptions, ...libraryCatalogOptions, ...catalogOptions]
   const topGenreSet = new Set<string>(topGenres)
   const [genresExpanded, setGenresExpanded] = useState(false)
   const [presetsExpanded, setPresetsExpanded] = useState(true)
@@ -187,7 +187,11 @@ function SidebarContent({
                       ? History
                       : option.id === 'recent'
                         ? Clock
-                        : Film
+                        : option.id === 'publicDomain'
+                          ? Scroll
+                          : option.id === 'creativeCommons'
+                            ? Copyright
+                            : Film
                   return (
                     <AppLink
                       key={option.id}

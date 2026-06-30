@@ -85,6 +85,8 @@ describe('parseAppRoute', () => {
     expect(parseAppRoute('/series')).toEqual({ contentType: 'series', catalogId: 'trending' })
     expect(parseAppRoute('/series/comedy')).toEqual({ contentType: 'series', catalogId: 'comedy' })
     expect(parseAppRoute('/movies/watchlist')).toEqual({ contentType: 'movie', catalogId: 'watchlist' })
+    expect(parseAppRoute('/movies/publicDomain')).toEqual({ contentType: 'movie', catalogId: 'publicDomain' })
+    expect(parseAppRoute('/movies/creativeCommons')).toEqual({ contentType: 'movie', catalogId: 'creativeCommons' })
   })
 
   it('parses search routes', () => {

@@ -31,6 +31,14 @@ function sendJson(response: ServerResponse, status: number, payload: unknown) {
 
 // https://vite.dev/config/
 export default defineConfig({
+  resolve: {
+    // The MKV player is a local package with React as a peer dependency.
+    // Pre-bundling it duplicates React and breaks hooks (Invalid hook call / useRef crash).
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    exclude: ['@mkv-web-player/player'],
+  },
   plugins: [
     react(),
     tailwindcss(),

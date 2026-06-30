@@ -4,11 +4,13 @@ import {
   CURRENT_RELEASE_YEAR,
 } from './cinemeta'
 import { genreCatalogOptions } from './genres'
+import { isEmbeddedLegalCatalog, LEGAL_CATALOG_REMOTE_URLS, legalCatalogOptions } from './legal-catalogs'
 import type { ContentType, LibraryCatalogId, Movie, MovieFilters } from '../types'
 
 export { filterGenres } from './genres'
+export { isEmbeddedLegalCatalog, isLegalCatalog, legalCatalogOptions } from './legal-catalogs'
 
-export type CatalogOptionId = (typeof catalogOptions)[number]['id'] | LibraryCatalogId
+export type CatalogOptionId = (typeof catalogOptions)[number]['id'] | LibraryCatalogId | (typeof legalCatalogOptions)[number]['id']
 
 export const libraryCatalogOptions = [
   { id: 'watchlist' as const, group: 'Library', label: 'Watchlist', shortLabel: 'Watchlist' },
@@ -18,6 +20,10 @@ export const libraryCatalogOptions = [
 
 export function isLibraryCatalog(catalogId: string) {
   return catalogId === 'watchlist' || catalogId === 'continue' || catalogId === 'recent'
+}
+
+export function isLocalCatalog(catalogId: string) {
+  return isLibraryCatalog(catalogId) || isEmbeddedLegalCatalog(catalogId)
 }
 
 export const catalogOptions = [
@@ -225,5 +231,6 @@ export function filterAndSortMovies(movies: Movie[], filters: MovieFilters) {
 }
 
 export function catalogUrlMap(contentType: ContentType) {
-  return contentType === 'series' ? CINEMETA_SERIES_CATALOG_URLS : CINEMETA_CATALOG_URLS
+  if (contentType === 'series') return CINEMETA_SERIES_CATALOG_URLS
+  return { ...CINEMETA_CATALOG_URLS, ...LEGAL_CATALOG_REMOTE_URLS }
 }

@@ -1,5 +1,6 @@
 export const ALLOWED_FETCH_HOSTS = [
   'v3-cinemeta.strem.io',
+  'caching.stremio.net',
   'torrentio.strem.fun',
   'comet.elfhosted.com',
   'mediafusion.elfhosted.com',

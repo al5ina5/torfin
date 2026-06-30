@@ -55,7 +55,7 @@ describe('filterStreamsForProfile', () => {
     ],
   }
 
-  it('netflix profile keeps best stream per quality and excludes cam/3d', () => {
+  it('excludes cam and 3d leftovers from addon output', () => {
     const normalized = normalizeStreams('plugin', raw)
     const filtered = filterStreamsForProfile(normalized, 'netflix', false, undefined, 'key')
     const titles = filtered.map((item) => item.title.toLowerCase())
@@ -65,16 +65,6 @@ describe('filterStreamsForProfile', () => {
     expect(titles).toContain('movie 720p')
     expect(titles.join(' ')).not.toContain('cam')
     expect(titles.join(' ')).not.toContain('3d')
-  })
-
-  it('dataSaver profile excludes very large results', () => {
-    const normalized = normalizeStreams('plugin', raw)
-    const filtered = filterStreamsForProfile(normalized, 'dataSaver', false, undefined, 'key')
-    const titles = filtered.map((item) => item.title.toLowerCase())
-
-    expect(titles).not.toContain('movie 2160p cached')
-    expect(titles).not.toContain('movie 1080p cached')
-    expect(titles).toContain('movie 720p')
   })
 
   it('preferCachedResults limits to cached entries when available', () => {

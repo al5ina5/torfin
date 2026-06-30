@@ -115,54 +115,18 @@ export function filterStreamsForProfile(
   customProfile?: CustomStreamProfile,
   torboxApiKey = '',
 ) {
-  if (customProfile) return sortStreamsByPlayability(filterStreamsForCustomProfile(streams, customProfile), torboxApiKey)
-
-  const clean = streams.filter((stream) => !isLowQualityCapture(stream) && !isThreeDimensional(stream))
-  const cached = clean.filter(isStreamCached)
-  const base = preferCachedResults && cached.length ? cached : clean
-
-  if (profile === 'netflix') {
-    const byQuality = new Map<number, StreamResult>()
-
-    base
-      .filter((stream) => streamQuality(stream) >= 720)
-      .forEach((stream) => {
-        const quality = streamQuality(stream)
-        const current = byQuality.get(quality)
-        if (!current || playabilityScore(stream, torboxApiKey) > playabilityScore(current, torboxApiKey)) {
-          byQuality.set(quality, stream)
-        }
-      })
-
-    return sortStreamsByPlayability(
-      Array.from(byQuality.values()).sort((a, b) => streamQuality(b) - streamQuality(a)),
-      torboxApiKey,
-    )
+  if (customProfile) {
+    return sortStreamsByPlayability(filterStreamsForCustomProfile(streams, customProfile), torboxApiKey)
   }
 
-  if (profile === 'dataSaver') {
-    return sortStreamsByPlayability(
-      dedupeStreams(base)
-        .filter((stream) => {
-          const quality = streamQuality(stream)
-          const size = streamSizeGb(stream)
-          return quality <= 1080 && (size <= 5 || !Number.isFinite(size))
-        })
-        .sort((a, b) => {
-          const qualityDelta = streamQuality(b) - streamQuality(a)
-          if (qualityDelta !== 0) return qualityDelta
-          return streamSizeGb(a) - streamSizeGb(b)
-        }),
-      torboxApiKey,
-    )
+  // Builtin profiles: easy-torbox applies filters in the Torrentio/Comet URL — light client pass only.
+  let base = streams.filter((stream) => !isLowQualityCapture(stream) && !isThreeDimensional(stream))
+  if (preferCachedResults) {
+    const cached = base.filter(isStreamCached)
+    if (cached.length) base = cached
   }
 
-  return sortStreamsByPlayability(
-    dedupeStreams(base)
-      .filter((stream) => streamQuality(stream) >= 1080 || /hdr|remux|bluray|blu-ray|atmos/i.test(streamText(stream)))
-      .sort((a, b) => streamSizeGb(b) - streamSizeGb(a)),
-    torboxApiKey,
-  )
+  return sortStreamsByPlayability(dedupeStreams(base), torboxApiKey)
 }
 
 export function filterStreamsForCustomProfile(streams: StreamResult[], profile: CustomStreamProfile) {

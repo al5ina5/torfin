@@ -2,7 +2,7 @@ import { ExternalLink, Heart, Loader2 } from 'lucide-react'
 
 import { appRouteToUrl, titleRoute } from '../lib/app-routes'
 import { youtubeVideoIdFromUrl } from '../lib/cinemeta'
-import type { ContentType, JellyfinLibraryMatch, MediaInfo, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
+import type { ContentType, JellyfinLibraryMatch, Movie, ResultProfile, SeriesMetaEpisode, StreamResult } from '../types'
 import { AppDrawer } from './AppDrawer'
 import { AppLink } from './AppLink'
 import { EpisodePicker } from './inspector/EpisodePicker'
@@ -13,10 +13,8 @@ import { MetadataFacts } from './inspector/MetadataFacts'
 import { PersonCredits } from './inspector/PersonCredits'
 import { PopularityStats } from './inspector/PopularityStats'
 import { StreamResults } from './StreamResults'
-import { PlaybackStatusOverlay } from './PlaybackStatusOverlay'
 import { NativePlaybackBanner } from './NativePlaybackBanner'
 import { TrailerEmbed } from './TrailerEmbed'
-import { VideoPlayer } from './VideoPlayer'
 
 type InspectorPanelProps = {
   contentType: ContentType
@@ -50,28 +48,13 @@ type InspectorPanelProps = {
   streamEmptyMessage: string
   resultProfile: ResultProfile
   resultsExpanded: boolean
-  playbackUrl: string
-  playbackTitle: string
-  playbackStatus: string
   nativePlayback: { player: string; title: string; mode: 'external' | 'window' } | null
   onPlayEmbedded: () => void
-  playbackStartAt: number | null
-  playbackDuration: number | null
-  playbackMediaOffset: number
-  onPlaybackMediaOffsetChange: (offset: number) => void
-  mediaInfo: MediaInfo | null
-  selectedAudioIndex: number | null
-  selectedSubtitleIndex: number | null
-  onPlaybackError?: () => void
-  onPlaybackTimeUpdate?: (currentTime: number, duration: number) => void
-  onPlaybackEnded?: () => void
   nextEpisodePrompt?: { remaining: number; next: { season: number; episode: number } } | null
   onCancelNextEpisode?: () => void
   resolvingKey: string
   downloadingKey: string
   torboxApiKey: string
-  onChooseAudio: (value: string) => void
-  onChooseSubtitle: (value: string) => void
   onRefreshStreams: () => void
   onResultProfileChange: (profile: ResultProfile) => void
   onToggleResultsExpanded: () => void
@@ -115,28 +98,13 @@ function InspectorContent({
   streamEmptyMessage,
   resultProfile,
   resultsExpanded,
-  playbackUrl,
-  playbackTitle,
-  playbackStatus,
   nativePlayback,
   onPlayEmbedded,
-  playbackStartAt,
-  playbackDuration,
-  playbackMediaOffset,
-  onPlaybackMediaOffsetChange,
-  mediaInfo,
-  selectedAudioIndex,
-  selectedSubtitleIndex,
-  onPlaybackError,
-  onPlaybackTimeUpdate,
-  onPlaybackEnded,
   nextEpisodePrompt,
   onCancelNextEpisode,
   resolvingKey,
   downloadingKey,
   torboxApiKey,
-  onChooseAudio,
-  onChooseSubtitle,
   onRefreshStreams,
   onResultProfileChange,
   onToggleResultsExpanded,
@@ -338,8 +306,8 @@ function InspectorContent({
           />
         ) : null}
 
-        {playbackUrl || playbackStatus || nativePlayback || nextEpisodePrompt ? (
-          <section className="overflow-hidden rounded-xl border border-black/20 bg-black shadow-lg">
+        {nativePlayback || nextEpisodePrompt ? (
+          <section className="space-y-0 overflow-hidden rounded-xl border border-[var(--mac-border)] bg-[var(--mac-surface)]">
             {nativePlayback ? (
               <NativePlaybackBanner
                 player={nativePlayback.player}
@@ -348,39 +316,16 @@ function InspectorContent({
                 onPlayEmbedded={onPlayEmbedded}
               />
             ) : null}
-            {!nativePlayback && playbackUrl ? (
-              <VideoPlayer
-                key={playbackUrl}
-                url={playbackUrl}
-                title={playbackTitle}
-                autoPlay
-                startAt={playbackStartAt}
-                knownDuration={playbackDuration ?? mediaInfo?.duration ?? null}
-                mediaOffset={playbackMediaOffset}
-                onMediaOffsetChange={onPlaybackMediaOffsetChange}
-                mediaInfo={mediaInfo}
-                selectedAudioIndex={selectedAudioIndex}
-                selectedSubtitleIndex={selectedSubtitleIndex}
-                onSelectAudio={onChooseAudio}
-                onSelectSubtitle={onChooseSubtitle}
-                onError={onPlaybackError}
-                onTimeUpdate={onPlaybackTimeUpdate}
-                onEnded={onPlaybackEnded}
-              />
-            ) : null}
-            {!nativePlayback && playbackStatus ? (
-              <PlaybackStatusOverlay status={playbackStatus} mediaInfo={mediaInfo} />
-            ) : null}
             {nextEpisodePrompt ? (
-              <div className="flex items-center justify-between gap-3 border-t border-white/10 bg-black/90 px-3 py-2.5">
-                <p className="text-[12px] text-white/90">
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--mac-border)] px-3 py-2.5">
+                <p className="text-[12px] text-[var(--mac-secondary)]">
                   Next episode S{String(nextEpisodePrompt.next.season).padStart(2, '0')}E
                   {String(nextEpisodePrompt.next.episode).padStart(2, '0')} in {nextEpisodePrompt.remaining}s
                 </p>
                 <button
                   type="button"
                   onClick={onCancelNextEpisode}
-                  className="h-7 shrink-0 rounded-md border border-white/20 px-2.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
+                  className="h-7 shrink-0 rounded-md border border-[var(--mac-border)] px-2.5 text-[11px] font-semibold transition hover:bg-[var(--mac-control-hover)]"
                 >
                   Cancel
                 </button>

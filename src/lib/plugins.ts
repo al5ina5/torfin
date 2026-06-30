@@ -3,11 +3,12 @@ import {
   TORRENTIO_STREAM_TEMPLATE,
   buildCometDebridConfig,
   buildTorrentioConfigPath,
+  encodeCometConfig,
   isLegacyBareCometUrl,
   isLegacyBareTorrentioUrl,
 } from './plugin-urls'
 import { STORAGE_KEYS, loadStoredJson } from './storage'
-import type { ContentType, Movie, PluginConfig } from '../types'
+import type { ContentType, CustomStreamProfile, Movie, PluginConfig, ResultProfile } from '../types'
 
 const legacyCometStreamUrlTemplate = 'https://comet.elfhosted.com/stream/movie/{imdbId}.json'
 const legacyKnightcrawlerStreamUrlTemplate = 'https://knightcrawler.elfhosted.com/stream/movie/{imdbId}.json'
@@ -79,9 +80,11 @@ export function hydrateUrl(
   torboxApiKey: string,
   contentType: ContentType,
   seriesSelection?: SeriesSelection,
+  resultProfile: ResultProfile = 'netflix',
+  customProfile?: CustomStreamProfile,
 ) {
-  const cometTorboxConfig = encodeURIComponent(btoa(JSON.stringify(buildCometDebridConfig(torboxApiKey))))
-  const torrentioConfig = buildTorrentioConfigPath(torboxApiKey)
+  const cometTorboxConfig = encodeURIComponent(encodeCometConfig(buildCometDebridConfig(torboxApiKey, resultProfile, customProfile)))
+  const torrentioConfig = buildTorrentioConfigPath(torboxApiKey, resultProfile, customProfile)
 
   let url = template
     .replaceAll('{imdbId}', encodeURIComponent(item.id))

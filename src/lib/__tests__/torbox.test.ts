@@ -103,6 +103,7 @@ describe('hasSelectableVideoFile', () => {
 describe('normalizeAllowedFetchJsonUrl', () => {
   it('accepts listed allowlist hosts', () => {
     expect(normalizeAllowedFetchJsonUrl('https://v3-cinemeta.strem.io/catalog/movie/top.json')).toBe('https://v3-cinemeta.strem.io/catalog/movie/top.json')
+    expect(normalizeAllowedFetchJsonUrl('https://caching.stremio.net/catalog/movie/publicdomainmovies.json')).toBe('https://caching.stremio.net/catalog/movie/publicdomainmovies.json')
     expect(normalizeAllowedFetchJsonUrl('https://torrentio.strem.fun/stream/movie/tt0111161.json')).toBe('https://torrentio.strem.fun/stream/movie/tt0111161.json')
     expect(normalizeAllowedFetchJsonUrl('https://api.torbox.app/v1/api/torrents/mylist')).toBe('https://api.torbox.app/v1/api/torrents/mylist')
   })

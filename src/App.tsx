@@ -17,6 +17,7 @@ import { MovieGrid } from './components/MovieGrid'
 import { MovieList } from './components/MovieList'
 import { PreferencesModal } from './components/PreferencesModal'
 import { Sidebar } from './components/Sidebar'
+import { VideoPlayer } from './components/VideoPlayer'
 import { useAppModalRoute } from './hooks/useAppModalRoute'
 import { useCatalogPullRefresh } from './hooks/useCatalogPullRefresh'
 import { useCatalogScrollLoad } from './hooks/useCatalogScrollLoad'
@@ -66,7 +67,8 @@ import {
   shouldShowDownloadsUi,
   withDownloadTimestamp,
 } from './lib/downloads'
-import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isGenreCatalogId, isLibraryCatalog, libraryCatalogOptions } from './lib/movies'
+import { appendUniqueMovies, catalogOptions, catalogUrlMap, catalogUrlWithFilters, clientFiltersForCatalog, defaultMovieFilters, filterAndSortMovies, isEmbeddedLegalCatalog, isGenreCatalogId, isLegalCatalog, isLibraryCatalog, isLocalCatalog, legalCatalogOptions, libraryCatalogOptions } from './lib/movies'
+import { embeddedLegalCatalogMovies } from './lib/legal-catalogs'
 import { genreToCatalogId } from './lib/genres'
 import { clearSearchHistory, loadRecentViews, loadSearchHistory, recordRecentView, recordSearchQuery, setRecentViewsLimit } from './lib/history'
 import { hydrateUrl, hasEnabledStreamSources, loadSavedPlugins, pluginNeedsTorboxKey } from './lib/plugins'
@@ -75,9 +77,8 @@ import { applyThemeMode, saveThemeMode } from './lib/theme'
 import { toast } from './lib/toast'
 import { getPlaybackResumePosition, nextEpisode, savePlaybackPosition, continueWatchingMovies, setPlaybackProgressConfig } from './lib/playback-progress'
 import { loadPreferences, normalizePreferences, resolveStartupCatalogId, resolveStartupContentType } from './lib/preferences'
-import { inspectMedia, isRetriablePlaybackError, needsTranscodeFallback, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
+import { inspectMedia, isRetriablePlaybackError, playbackUnavailableMessage, resolvePlaybackUrl, shouldTranscodeDirectly, startHlsTranscode } from './lib/playback'
 import { isMacTauri, openNativePlayer } from './lib/native-player'
-import { playbackPrepareStatus } from './lib/transcode-strategy'
 import { jellyfinPlayUrl, lookupJellyfinSeasonEpisodes, fetchJellyfinFavorites, lookupJellyfinLibrary, streamTargetQuality } from './lib/jellyfin-library'
 import { filterStreamsForProfile, normalizeStreams, sortStreamsByPlayability } from './lib/streams'
 import { streamDirectUrl, streamNeedsTorboxResolve } from './lib/streams-display'
@@ -94,7 +95,6 @@ import type {
   DownloadStatus,
   FilterPreset,
   JellyfinLibraryMatch,
-  MediaInfo,
   Movie,
   PluginConfig,
   PreferencesTab,
@@ -211,15 +211,12 @@ export default function App() {
   const [playbackError, setPlaybackError] = useState('')
   const [playbackStatus, setPlaybackStatus] = useState('')
   const [playbackStartAt, setPlaybackStartAt] = useState<number | null>(null)
-  const [playbackDuration, setPlaybackDuration] = useState<number | null>(null)
-  const [playbackMediaOffset, setPlaybackMediaOffset] = useState(0)
   const [focusedMovieIndex, setFocusedMovieIndex] = useState(0)
   const [batchDownloading, setBatchDownloading] = useState(false)
   const [enrichedMovie, setEnrichedMovie] = useState<Movie | null>(null)
   const [similarMovies, setSimilarMovies] = useState<Movie[]>([])
   const [jellyfinMatch, setJellyfinMatch] = useState<JellyfinLibraryMatch | null>(null)
   const [jellyfinLoading, setJellyfinLoading] = useState(false)
-  const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null)
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number | null>(null)
   const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -277,12 +274,12 @@ export default function App() {
   })
   const titleLoadRef = useRef<string | null>(null)
   const shouldRemoteSearch = debouncedQuery.length >= 2
-  const selectedCatalog = [...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
+  const selectedCatalog = [...legalCatalogOptions, ...libraryCatalogOptions, ...catalogOptions].find((item) => item.id === catalogId) ?? catalogOptions[0]
   const activeFilterPreset = route.presetId
     ? findFilterPresetByRouteSlug(route.presetId, customFilterPresets)
     : undefined
   const browseTitle = activeFilterPreset?.name ?? selectedCatalog.label
-  const baseCatalogUrl = isLibraryCatalog(catalogId) ? '' : catalogUrlMap(contentType)[selectedCatalog.id as keyof ReturnType<typeof catalogUrlMap>]
+  const baseCatalogUrl = isLocalCatalog(catalogId) ? '' : catalogUrlMap(contentType)[selectedCatalog.id as keyof ReturnType<typeof catalogUrlMap>]
   const filteredCatalogUrl = baseCatalogUrl
     ? catalogUrlWithFilters(baseCatalogUrl || catalogUrlMap(contentType).trending, movieFilters, contentType, catalogId)
     : ''
@@ -310,7 +307,7 @@ export default function App() {
   const watchlistIds = useMemo(() => new Set(watchlist.map((movie) => `${movie.type}:${movie.id}`)), [watchlist])
 
   const { data: catalogData, error: catalogError, isLoading: catalogLoading, isValidating: catalogValidating, mutate: mutateCatalog } = useSWR(
-    isLibraryCatalog(catalogId) ? null : ['catalog', contentType, filteredCatalogUrl],
+    isLocalCatalog(catalogId) ? null : ['catalog', contentType, filteredCatalogUrl],
     ([, type, url]) => loadJson<{ metas?: unknown[] }>(catalogPageUrl(url, 0)).then((body) => (body.metas || []).map((item) => normalizeCatalogItem(item as never, type as ContentType)).filter(Boolean) as Movie[]),
     { keepPreviousData: false },
   )
@@ -325,12 +322,12 @@ export default function App() {
   }, [selectedEpisode, selectedMovie?.type, selectedSeason])
   const { data: streamData, error: streamError, isLoading: streamsLoading, mutate: refreshStreams } = useSWR(
     selectedMovie && showStreamResults && (selectedMovie.type === 'movie' || episodeSelection)
-      ? ['streams', selectedMovie.id, contentType, episodeSelection?.season, episodeSelection?.episode, torboxApiKey.trim(), activePlugins.map((plugin) => `${plugin.id}:${plugin.streamUrlTemplate}`).join('|')]
+      ? ['streams', selectedMovie.id, contentType, episodeSelection?.season, episodeSelection?.episode, torboxApiKey.trim(), resultProfile, activePlugins.map((plugin) => `${plugin.id}:${plugin.streamUrlTemplate}`).join('|')]
       : null,
     async () => {
     if (!selectedMovie) return { streams: [] as StreamResult[], errors: [] as string[] }
     const settled = await Promise.allSettled(activePlugins.map(async (plugin) => {
-      const url = hydrateUrl(plugin.streamUrlTemplate, selectedMovie, torboxApiKey, contentType, episodeSelection)
+      const url = hydrateUrl(plugin.streamUrlTemplate, selectedMovie, torboxApiKey, contentType, episodeSelection, resultProfile, activeCustomProfile)
       return normalizeStreams(plugin.name, await loadJson<unknown>(url))
     }))
     const found: StreamResult[] = []
@@ -519,8 +516,6 @@ export default function App() {
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
-    setPlaybackDuration(null)
-    setPlaybackMediaOffset(0)
   }, [route.title, selectedMovie])
 
   useEffect(() => {
@@ -547,7 +542,7 @@ export default function App() {
   }, [preferences.theme])
 
   useEffect(() => {
-    if (isLibraryCatalog(catalogId)) {
+    if (isLocalCatalog(catalogId)) {
       setMovieError('')
       setCatalogSkip(0)
       setHasMoreMovies(false)
@@ -565,7 +560,7 @@ export default function App() {
   }, [catalogId, contentType, filteredCatalogUrl])
 
   useEffect(() => {
-    if (isLibraryCatalog(catalogId) || catalogLoading || catalogValidating || !catalogData) return
+    if (isLocalCatalog(catalogId) || catalogLoading || catalogValidating || !catalogData) return
     setMovies(catalogData)
     setCatalogSkip(catalogData.length)
     setHasMoreMovies(catalogSupportsPagination(filteredCatalogUrl) && catalogData.length > 0)
@@ -585,6 +580,19 @@ export default function App() {
     setCatalogSkip(0)
     setHasMoreMovies(false)
   }, [catalogId, contentType, recentViews, watchlist])
+
+  useEffect(() => {
+    if (!isEmbeddedLegalCatalog(catalogId)) return
+    setMovieError('')
+    setMovies(embeddedLegalCatalogMovies(catalogId))
+    setCatalogSkip(0)
+    setHasMoreMovies(false)
+  }, [catalogId])
+
+  useEffect(() => {
+    if (contentType !== 'series' || !isLegalCatalog(catalogId)) return
+    navigateBrowse('movie', catalogId, true)
+  }, [catalogId, contentType, navigateBrowse])
   useEffect(() => {
     if (!preferences.searchHistoryEnabled) return
     if (debouncedQuery.length >= 2) {
@@ -727,7 +735,7 @@ export default function App() {
       await mutateSearch()
       return
     }
-    if (!isLibraryCatalog(catalogId)) {
+    if (!isLocalCatalog(catalogId)) {
       await mutateCatalog()
     }
   }, [catalogId, mutateCatalog, mutateSearch, shouldRemoteSearch])
@@ -747,19 +755,19 @@ export default function App() {
     ? `${contentType}:search:${debouncedQuery}`
     : route.presetId
       ? `${contentType}:preset:${route.presetId}`
-      : isLibraryCatalog(catalogId)
+      : isLocalCatalog(catalogId)
         ? libraryContentKey
         : catalogContentKey
   useEffect(() => {
     setFocusedMovieIndex(0)
   }, [moviesContentKey])
-  const moviesLoading = isLibraryCatalog(catalogId)
+  const moviesLoading = isLocalCatalog(catalogId)
     ? false
     : shouldRemoteSearch
       ? (searchLoading || (searchValidating && !searchData?.length))
       : catalogLoading || catalogValidating || (!catalogError && !catalogData && !movies.length)
   const catalogFetchFailed =
-    !isLibraryCatalog(catalogId) &&
+    !isLocalCatalog(catalogId) &&
     !shouldRemoteSearch &&
     !catalogLoading &&
     !catalogValidating &&
@@ -875,13 +883,19 @@ export default function App() {
   function handleContentTypeChange(next: ContentType) {
     setMovieFilters(defaultMovieFilters)
     setQuery('')
-    navigateBrowse(next, route.presetId ? 'trending' : catalogId)
+    const nextCatalogId = route.presetId
+      ? 'trending'
+      : next === 'series' && isLegalCatalog(catalogId)
+        ? 'trending'
+        : catalogId
+    navigateBrowse(next, nextCatalogId)
   }
 
   function handleCatalogChange(nextCatalogId: string) {
     setMovieFilters(defaultMovieFilters)
     setQuery('')
-    navigateBrowse(contentType, nextCatalogId)
+    const nextType = isLegalCatalog(nextCatalogId) ? 'movie' : contentType
+    navigateBrowse(nextType, nextCatalogId)
   }
 
   function updateDownloadConfig(next: DownloadConfig) {
@@ -1150,23 +1164,24 @@ export default function App() {
 
     playbackRecoveryCountRef.current += 1
     const generation = ++playbackGenerationRef.current
-    const isDirectPlayback = needsTranscodeFallback(currentSourceUrl, playbackUrl)
-    setPlaybackStatus(isDirectPlayback ? 'Transcoding' : 'Retrying playback')
     setPlaybackError('')
-    setPlaybackUrl('')
     try {
       let sourceUrl = currentSourceUrl
-      if (!isDirectPlayback && activePlaybackStreamRef.current) {
-        setPlaybackStatus('Refreshing link')
+      if (activePlaybackStreamRef.current) {
         sourceUrl = await refreshActiveSourceUrl()
         setCurrentSourceUrl(sourceUrl)
       }
-      const result = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex, 0)
-      if (generation !== playbackGenerationRef.current) return
-      setPlaybackUrl(resolvePlaybackUrl(result.url))
-      setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
-      setPlaybackMediaOffset(result.mediaOffset ?? 0)
-      setPlaybackStatus('')
+
+      setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
+
+      if (isTauriRuntime() && shouldTranscodeDirectly(sourceUrl, selectedAudioIndex, selectedSubtitleIndex)) {
+        const result = await startTranscodeWithRefresh(sourceUrl, selectedAudioIndex, selectedSubtitleIndex, 0)
+        if (generation !== playbackGenerationRef.current) return
+        setPlaybackUrl(resolvePlaybackUrl(result.url))
+      } else if (generation === playbackGenerationRef.current) {
+        setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
+      }
+      if (generation === playbackGenerationRef.current) setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl('')
@@ -1175,7 +1190,7 @@ export default function App() {
       setPlaybackError(message)
       setPlaybackStatus('')
     }
-  }, [currentSourceUrl, playbackUrl, selectedAudioIndex, selectedSubtitleIndex, torboxApiKey])
+  }, [currentSourceUrl, selectedAudioIndex, selectedSubtitleIndex, torboxApiKey])
 
   async function refreshActiveSourceUrl() {
     const active = activePlaybackStreamRef.current
@@ -1208,68 +1223,41 @@ export default function App() {
   async function preparePlayback(sourceUrl: string, title: string, audioIndex: number | null, subtitleIndex: number | null, resumeAt: number | null = null) {
     const generation = ++playbackGenerationRef.current
     playbackRecoveryCountRef.current = 0
-    setPlaybackStatus('Opening')
     setPlaybackError('')
-    setPlaybackUrl('')
+    setPlaybackStatus('')
     setPlaybackTitle(title)
     setPlaybackStartAt(resumeAt)
-    setPlaybackDuration(null)
-    setPlaybackMediaOffset(0)
     setSelectedAudioIndex(audioIndex)
     setSelectedSubtitleIndex(subtitleIndex)
+    setCurrentSourceUrl(sourceUrl)
 
     void inspectMedia(sourceUrl).then((info) => {
       if (generation !== playbackGenerationRef.current) return
-      setMediaInfo(info)
-      if (info?.duration) {
-        setPlaybackDuration((current) => current ?? info.duration ?? null)
-      }
       if (audioIndex === null && info?.audioTracks[0]?.index !== undefined) {
         setSelectedAudioIndex(info.audioTracks[0].index)
       }
-      if (shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
-        setPlaybackStatus(playbackPrepareStatus(info, audioIndex, subtitleIndex))
-      }
     })
 
-    if (!shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)) {
+    const needsTauriTranscode = isTauriRuntime() && shouldTranscodeDirectly(sourceUrl, audioIndex, subtitleIndex)
+    if (!needsTauriTranscode) {
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
-      setPlaybackDuration(mediaInfo?.duration ?? null)
-      setPlaybackMediaOffset(0)
-      setPlaybackStatus('')
       return
     }
 
-    setPlaybackStatus('Preparing')
+    if (generation !== playbackGenerationRef.current) return
+    setPlaybackUrl(resolvePlaybackUrl(sourceUrl))
+
     try {
       const result = await startTranscodeWithRefresh(sourceUrl, audioIndex, subtitleIndex, resumeAt ?? 0)
       if (generation !== playbackGenerationRef.current) return
       setPlaybackUrl(resolvePlaybackUrl(result.url))
-      setPlaybackDuration(result.duration ?? mediaInfo?.duration ?? null)
-      setPlaybackMediaOffset(result.mediaOffset ?? resumeAt ?? 0)
-      setPlaybackStatus('')
     } catch (error) {
       if (generation !== playbackGenerationRef.current) return
-      setPlaybackStatus('')
       const message = error instanceof Error ? error.message : 'Could not start transcoded playback.'
       lastPlaybackErrorRef.current = message
       setPlaybackError(message)
     }
-  }
-
-  async function chooseAudioTrack(value: string) {
-    if (!currentSourceUrl) return
-    const index = value ? Number(value) : null
-    setSelectedAudioIndex(index)
-    await preparePlayback(currentSourceUrl, playbackTitle || 'Player', index, selectedSubtitleIndex)
-  }
-
-  async function chooseSubtitleTrack(value: string) {
-    if (!currentSourceUrl) return
-    const index = value ? Number(value) : null
-    setSelectedSubtitleIndex(index)
-    await preparePlayback(currentSourceUrl, playbackTitle || 'Player', selectedAudioIndex, index)
   }
 
   function episodePlaybackLabel() {
@@ -1295,11 +1283,10 @@ export default function App() {
     activePlaybackStreamRef.current = { stream, index }
     setResolvingStreamKey(key)
     setPlaybackError('')
-    setPlaybackStatus('Resolving')
+    setPlaybackStatus('')
     setPlaybackUrl('')
     setNativePlayback(null)
     setCurrentSourceUrl('')
-    setMediaInfo(null)
     setSelectedAudioIndex(null)
     setSelectedSubtitleIndex(null)
     const resumeAt = getPlaybackResumePosition(selectedMovie, episodeSelection?.season, episodeSelection?.episode)
@@ -1311,10 +1298,8 @@ export default function App() {
       setPlaybackTitle(title)
 
       if (isMacTauri() && preferences.useNativeMacPlayer) {
-        setPlaybackStatus('Opening native player')
         const result = await openNativePlayer(sourceUrl, title, preferences.macNativePlayer)
         setNativePlayback({ player: result.player, title, mode: result.mode })
-        setPlaybackStatus('')
         toast.success(`Playing in ${result.player}`)
         return
       }
@@ -1359,7 +1344,7 @@ export default function App() {
       setSelectedEpisode(next.episode)
       navigateToTitle(selectedMovie, next.season, next.episode, true)
       setPlaybackUrl('')
-      setPlaybackStatus('Loading next episode')
+      setPlaybackStatus('')
     },
     [navigateToTitle, selectedMovie],
   )
@@ -1471,7 +1456,7 @@ export default function App() {
         }
         const urlResults = await Promise.allSettled(
           activePlugins.map(async (plugin) => {
-            const url = hydrateUrl(plugin.streamUrlTemplate, selectedMovie, torboxApiKey, 'series', { season: entry.season, episode: entry.episode })
+            const url = hydrateUrl(plugin.streamUrlTemplate, selectedMovie, torboxApiKey, 'series', { season: entry.season, episode: entry.episode }, resultProfile, activeCustomProfile)
             return normalizeStreams(plugin.name, await loadJson<unknown>(url))
           }),
         )
@@ -1670,11 +1655,15 @@ export default function App() {
 
   function handleCloseInspector() {
     closeTitle()
+    handleStopPlayback()
+  }
+
+  function handleStopPlayback() {
+    playbackGenerationRef.current += 1
     setPlaybackUrl('')
     setPlaybackError('')
     setPlaybackStatus('')
-    setPlaybackDuration(null)
-    setPlaybackMediaOffset(0)
+    setNativePlayback(null)
     setNextEpisodePrompt(null)
   }
 
@@ -2058,28 +2047,13 @@ export default function App() {
           streamEmptyMessage={streamEmptyMessage}
           resultProfile={resultProfile}
           resultsExpanded={resultsExpanded}
-          playbackUrl={playbackUrl}
-          playbackTitle={playbackTitle}
-          playbackStatus={playbackStatus}
           nativePlayback={nativePlayback}
           onPlayEmbedded={() => { void playEmbeddedFromNative() }}
-          playbackStartAt={playbackStartAt}
-          playbackDuration={playbackDuration}
-          playbackMediaOffset={playbackMediaOffset}
-          onPlaybackMediaOffsetChange={setPlaybackMediaOffset}
-          mediaInfo={mediaInfo}
-          selectedAudioIndex={selectedAudioIndex}
-          selectedSubtitleIndex={selectedSubtitleIndex}
-          onPlaybackError={handlePlaybackFailure}
-          onPlaybackTimeUpdate={handlePlaybackTimeUpdate}
-          onPlaybackEnded={handlePlaybackEnded}
           nextEpisodePrompt={nextEpisodePrompt}
           onCancelNextEpisode={() => setNextEpisodePrompt(null)}
           resolvingKey={resolvingStreamKey}
           downloadingKey={downloadingStreamKey}
           torboxApiKey={torboxApiKey}
-          onChooseAudio={(value) => { void chooseAudioTrack(value) }}
-          onChooseSubtitle={(value) => { void chooseSubtitleTrack(value) }}
           onRefreshStreams={() => { void refreshStreams() }}
           onResultProfileChange={setResultProfile}
           onToggleResultsExpanded={() => setResultsExpanded((current) => !current)}
@@ -2088,6 +2062,24 @@ export default function App() {
           mobileOpen={!isDesktop && Boolean(selectedMovie)}
           onMobileClose={handleCloseInspector}
         />
+
+        {(playbackUrl || currentSourceUrl) && !nativePlayback ? (
+          <div className="playback-player-mount">
+            <VideoPlayer
+              key={playbackUrl || currentSourceUrl}
+              url={playbackUrl || currentSourceUrl}
+              sourceUrl={currentSourceUrl}
+              title={playbackTitle}
+              poster={selectedMovie?.background || selectedMovie?.poster}
+              autoPlay
+              startAt={playbackStartAt}
+              storageKey={selectedMovie ? `torfin:${selectedMovie.id}:${selectedSeason ?? ''}:${selectedEpisode ?? ''}` : ''}
+              onError={handlePlaybackFailure}
+              onTimeUpdate={handlePlaybackTimeUpdate}
+              onEnded={handlePlaybackEnded}
+            />
+          </div>
+        ) : null}
 
         <FiltersModal
           open={filtersOpen}
