@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { PlaybackState } from '@mkv-web-player/player'
 import { MkvPlayer } from '@mkv-web-player/player'
 import '@mkv-web-player/player/styles.css'
 
@@ -61,7 +62,7 @@ export function VideoPlayer({
       popout={popout}
       className="torfin-mkv-player"
       onError={() => onError?.()}
-      onProgress={(state) => {
+      onProgress={(state: PlaybackState) => {
         if (state.duration > 0) {
           onTimeUpdate?.(state.currentTime, state.duration)
         }

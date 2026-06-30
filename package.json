@@ -29,7 +29,7 @@
     "install:hooks": "bash scripts/install-git-hooks.sh"
   },
   "dependencies": {
-    "@mkv-web-player/player": "file:../player/packages/player",
+    "@mkv-web-player/player": "file:vendor/mkv-web-player",
     "@tauri-apps/api": "^2.11.1",
     "lucide-react": "^1.22.0",
     "react": "^19.2.7",
